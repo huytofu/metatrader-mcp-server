@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 import os
 import argparse
-import logging
 import pandas as pd
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
+load_dotenv()
 
 from mcp.server.fastmcp import FastMCP, Context
 from contextlib import asynccontextmanager
@@ -12,7 +12,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Optional, Union
 
-from metatrader_mcp.utils import init, get_client
+from metatrader_mcp.utils import init, get_client, initialize_client
 
 # ────────────────────────────────────────────────────────────────────────────────
 # 1) Lifespan context definition
@@ -23,9 +23,9 @@ class AppContext:
 
 @asynccontextmanager
 async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
-
+	client = None
 	try:
-		client = init(os.getenv("login"), os.getenv("password"), os.getenv("server"))
+		client = init(os.getenv("login"), os.getenv("password"), os.getenv("server"), os.getenv("mt5_path"))
 		yield AppContext(client=client)
 	finally:
 		client.disconnect()
@@ -51,7 +51,10 @@ def get_account_info(ctx: Context) -> dict:
 	Returns:
 		dict: A dictionary containing the account information.
 	"""
-	client = get_client(ctx)
+	if ctx is not None:
+		client = get_client(ctx)
+	else:
+		client = initialize_client()
 	return client.account.get_trade_statistics()
 
 @mcp.tool()
@@ -65,7 +68,10 @@ def get_deals(ctx: Context, from_date: Optional[str] = None, to_date: Optional[s
 	Returns:
 		pd.DataFrame: A pandas DataFrame containing the historical deals.
 	"""
-	client = get_client(ctx)
+	if ctx is not None:
+		client = get_client(ctx)
+	else:
+		client = initialize_client()
 	df = client.history.get_deals_as_dataframe(from_date=from_date, to_date=to_date, group=symbol)
 	return df
 
@@ -80,7 +86,10 @@ def get_orders(ctx: Context, from_date: Optional[str] = None, to_date: Optional[
 	Returns:
 		pd.DataFrame: A pandas DataFrame containing the historical orders.
 	"""
-	client = get_client(ctx)
+	if ctx is not None:
+		client = get_client(ctx)
+	else:
+		client = initialize_client()
 	df = client.history.get_orders_as_dataframe(from_date=from_date, to_date=to_date, group=symbol)
 	return df
 
@@ -96,7 +105,10 @@ def get_candles_by_date(ctx: Context, symbol_name: str, timeframe: str, from_dat
 		pd.DataFrame: A pandas DataFrame containing the candle data.
 		Columns: time, open, high, low, close, tick_volume, spread and real_volume
 	"""
-	client = get_client(ctx)
+	if ctx is not None:
+		client = get_client(ctx)
+	else:
+		client = initialize_client()
 	df = client.market.get_candles_by_date(symbol_name=symbol_name, timeframe=timeframe, from_date=from_date, to_date=to_date)
 	return df
 
@@ -112,10 +124,14 @@ def get_candles_latest(ctx: Context, symbol_name: str, timeframe: str, count: in
 		pd.DataFrame: A pandas DataFrame containing the candle data.
 		Columns: time, open, high, low, close, tick_volume, spread and real_volume
 	"""
-	client = get_client(ctx)
+	if ctx is not None:
+		client = get_client(ctx)
+	else:
+		client = initialize_client()
 	df = client.market.get_candles_latest(symbol_name=symbol_name, timeframe=timeframe, count=count)
 	return df
 
+@mcp.tool()
 def calculate_candles_range(ctx: Context, symbol_name: str, timeframe: str, count: int = 100) -> pd.DataFrame:
 	"""Calculate the range of the latest N candles for a symbol and timeframe.
 	Args:
@@ -126,7 +142,10 @@ def calculate_candles_range(ctx: Context, symbol_name: str, timeframe: str, coun
 	Returns:
 		dict: A dictionary containing the min, max and range of the latest N candles for the symbol and timeframe.
 	"""
-	client = get_client(ctx)
+	if ctx is not None:
+		client = get_client(ctx)
+	else:
+		client = initialize_client()
 	df = client.market.get_candles_latest(symbol_name=symbol_name, timeframe=timeframe, count=count)
 	min_price = df['low'].min()
 	max_price = df['high'].max()
@@ -137,6 +156,35 @@ def calculate_candles_range(ctx: Context, symbol_name: str, timeframe: str, coun
 		"range": range
 	}
 
+@mcp.tool()
+def check_if_range_is_channel(ctx: Context, symbol_name: str, timeframe: str, count: int = 100) -> bool:
+	"""Check if the range of the latest N candles for a symbol and timeframe is a channel.
+	Args:
+		ctx (Context): The context object.
+		symbol_name (str): The symbol name. Example: 'EURUSD'
+		timeframe (str): The timeframe. (Must be one of the following: 'M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M10', 'M12', 'M15', 'M20', 'M30', 'H1', 'H2', 'H3', 'H4', 'H6', 'H8', 'H12', 'D1', 'W1', 'MN1')
+		count (int): The number of candles to get.
+	Returns:
+		bool: True if the range is a channel, False otherwise.
+	"""
+	if ctx is not None:
+		client = get_client(ctx)
+	else:
+		client = initialize_client()
+	df = client.market.get_candles_latest(symbol_name=symbol_name, timeframe=timeframe, count=count)	
+	channel_range = df["high"].max() - df["low"].min()
+	two_top_peaks = df.nlargest(2, "high")
+	two_bottom_peaks = df.nsmallest(2, "low")
+
+	top_peaks_diff = two_top_peaks["high"].diff()
+	bottom_peaks_diff = two_bottom_peaks["low"].diff()
+
+	if abs(top_peaks_diff.iloc[1]) <= channel_range*0.2 and abs(bottom_peaks_diff.iloc[1]) <= channel_range*0.2:
+		return True
+	else:
+		return False
+
+@mcp.tool()
 def calculate_range_percentile(ctx: Context, symbol_name: str, timeframe: str, count: int = 100) -> dict:
 	"""Calculate the range percentile of the latest N candles for a symbol and timeframe.
 	Args:
@@ -147,7 +195,10 @@ def calculate_range_percentile(ctx: Context, symbol_name: str, timeframe: str, c
 	Returns:
 		dict: A dictionary containing the range percentile of the latest N candles for the symbol and timeframe.
 	"""
-	client = get_client(ctx)
+	if ctx is not None:
+		client = get_client(ctx)
+	else:
+		client = initialize_client()
 	df = client.market.get_candles_latest(symbol_name=symbol_name, timeframe=timeframe, count=count)
 	df["range"] = df["high"] - df["low"]
 	percentiles = {}
@@ -156,6 +207,7 @@ def calculate_range_percentile(ctx: Context, symbol_name: str, timeframe: str, c
 		percentiles[percentile] = range_percentile
 	return percentiles
 
+@mcp.tool()
 def historical_test_get_position_outcome(ctx: Context, symbol_name: str, timeframe: str, order_placement_date: str, position_type: str = "BUY", take_profit: float = 0.0, stop_loss: float = 0.0) -> str:
 	"""Get the outcome of a hypothetical position during a historical test.
 	Args:
@@ -169,7 +221,10 @@ def historical_test_get_position_outcome(ctx: Context, symbol_name: str, timefra
 	Returns:
 		str: The outcome of the position. One of the following: 'Win', 'Lose', 'Ambiguous'
 	"""
-	client = get_client(ctx)
+	if ctx is not None:
+		client = get_client(ctx)
+	else:
+		client = initialize_client()
 	future_date = datetime.strptime(order_placement_date, "%Y-%m-%d %H:%M") + timedelta(days=28)
 	future_date = future_date.strftime("%Y-%m-%d %H:%M")
 	df = client.market.get_candles_by_date(symbol_name=symbol_name, timeframe=timeframe, from_date=order_placement_date, to_date=future_date)
@@ -196,6 +251,7 @@ def historical_test_get_position_outcome(ctx: Context, symbol_name: str, timefra
 		else:
 			return "Pending"
 
+@mcp.tool()
 def historical_test_get_position_trigger_date(ctx: Context, symbol_name: str, timeframe: str, order_placement_date: str, position_type: str = "BUY", entry_price_buy: float = 0.0, entry_price_sell: float = 0.0) -> str:
 	"""Get the trigger date of a hypothetical position during a historical test.
 	Args:
@@ -211,7 +267,10 @@ def historical_test_get_position_trigger_date(ctx: Context, symbol_name: str, ti
 		Both keys' values will be None if the position is not triggered. 
 		Both keys will have values if the position type is LIMIT_OCO or OCO_STOP.
 	"""
-	client = get_client(ctx)
+	if ctx is not None:
+		client = get_client(ctx)
+	else:
+		client = initialize_client()
 	future_date = datetime.strptime(order_placement_date, "%Y-%m-%d %H:%M") + timedelta(days=7)
 	future_date = future_date.strftime("%Y-%m-%d %H:%M")
 	df = client.market.get_candles_by_date(symbol_name=symbol_name, timeframe=timeframe, from_date=order_placement_date, to_date=future_date)
@@ -262,7 +321,10 @@ def get_symbol_price(ctx: Context, symbol_name: str) -> dict:
 	Returns:
 		dict: A dictionary containing the latest price info for the symbol.
 	"""
-	client = get_client(ctx)
+	if ctx is not None:
+		client = get_client(ctx)
+	else:
+		client = initialize_client()
 	return client.market.get_symbol_price(symbol_name=symbol_name)
 
 @mcp.tool()
@@ -273,7 +335,10 @@ def get_all_symbols(ctx: Context) -> list:
 	Returns:
 		list: A list of all available market symbols.
 	"""
-	client = get_client(ctx)
+	if ctx is not None:
+		client = get_client(ctx)
+	else:
+		client = initialize_client()
 	return client.market.get_symbols()
 
 @mcp.tool()
@@ -286,7 +351,10 @@ def get_symbols(ctx: Context, group: Optional[str] = None) -> list:
 	Returns:
 		list: A list of available market symbols.
 	"""
-	client = get_client(ctx)
+	if ctx is not None:
+		client = get_client(ctx)
+	else:
+		client = initialize_client()
 	return client.market.get_symbols(group=group)
 
 # ────────────────────────────────────────────────────────────────────────────────
@@ -301,7 +369,10 @@ def get_all_positions(ctx: Context) -> pd.DataFrame:
 	Returns:
 		pd.DataFrame: A pandas DataFrame containing the open positions.
 	"""
-	client = get_client(ctx)
+	if ctx is not None:
+		client = get_client(ctx)
+	else:
+		client = initialize_client()
 	df = client.order.get_all_positions()
 	return df
 
@@ -314,7 +385,10 @@ def get_positions_by_symbol(ctx: Context, symbol: str) -> pd.DataFrame:
 	Returns:
 		pd.DataFrame: A pandas DataFrame containing the open positions for the specific symbol.
 	"""
-	client = get_client(ctx)
+	if ctx is not None:
+		client = get_client(ctx)
+	else:
+		client = initialize_client()
 	df = client.order.get_positions_by_symbol(symbol=symbol)
 	return df
 
@@ -327,7 +401,10 @@ def get_positions_by_id(ctx: Context, id: Union[int, str]) -> pd.DataFrame:
 	Returns:
 		pd.DataFrame: A pandas DataFrame containing the open positions for the specific ID.
 	"""
-	client = get_client(ctx)
+	if ctx is not None:
+		client = get_client(ctx)
+	else:
+		client = initialize_client()
 	df = client.order.get_positions_by_id(id=id)
 	return df
 
@@ -339,7 +416,10 @@ def get_all_pending_orders(ctx: Context) -> pd.DataFrame:
 	Returns:
 		pd.DataFrame: A pandas DataFrame containing the pending orders.
 	"""
-	client = get_client(ctx)
+	if ctx is not None:
+		client = get_client(ctx)
+	else:
+		client = initialize_client()
 	df = client.order.get_all_pending_orders()
 	return df
 
@@ -352,7 +432,10 @@ def get_pending_orders_by_symbol(ctx: Context, symbol: str) -> pd.DataFrame:
 	Returns:
 		pd.DataFrame: A pandas DataFrame containing the pending orders for the specific symbol.
 	"""
-	client = get_client(ctx)
+	if ctx is not None:
+		client = get_client(ctx)
+	else:
+		client = initialize_client()
 	df = client.order.get_pending_orders_by_symbol(symbol=symbol)
 	return df
 
@@ -365,7 +448,10 @@ def get_pending_orders_by_id(ctx: Context, id: Union[int, str]) -> pd.DataFrame:
 	Returns:
 		pd.DataFrame: A pandas DataFrame containing the pending orders for the specific ID.
 	"""
-	client = get_client(ctx)
+	if ctx is not None:
+		client = get_client(ctx)
+	else:
+		client = initialize_client()
 	df = client.order.get_pending_orders_by_id(id=id)
 	return df
 
