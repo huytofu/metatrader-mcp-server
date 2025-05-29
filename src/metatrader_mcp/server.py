@@ -167,7 +167,7 @@ def historical_test_get_position_outcome(ctx: Context, symbol_name: str, timefra
 		take_profit (float): The take profit price.
 		stop_loss (float): The stop loss price.
 	Returns:
-		str: The outcome of the position.
+		str: The outcome of the position. One of the following: 'Win', 'Lose', 'Ambiguous'
 	"""
 	client = get_client(ctx)
 	future_date = datetime.strptime(order_placement_date, "%Y-%m-%d %H:%M") + timedelta(days=28)
@@ -195,7 +195,6 @@ def historical_test_get_position_outcome(ctx: Context, symbol_name: str, timefra
 			return "Lose"
 		else:
 			return "Pending"
-		break
 
 def historical_test_get_position_trigger_date(ctx: Context, symbol_name: str, timeframe: str, order_placement_date: str, position_type: str = "BUY", entry_price_buy: float = 0.0, entry_price_sell: float = 0.0) -> str:
 	"""Get the trigger date of a hypothetical position during a historical test.
@@ -208,7 +207,9 @@ def historical_test_get_position_trigger_date(ctx: Context, symbol_name: str, ti
 		entry_price_buy (float): The entry price of the position. None for LIMIT_SELL and SELL_STOP.
 		entry_price_sell (float): The entry price of the position. None for LIMIT_BUY and BUY_STOP.
 	Returns:
-		str: The trigger date of the position.
+		dict: A dictionary containing the trigger date of the position. There will be two keys: 'buy' and 'sell'. Values can be None or a datetime object.
+		Both keys' values will be None if the position is not triggered. 
+		Both keys will have values if the position type is LIMIT_OCO or OCO_STOP.
 	"""
 	client = get_client(ctx)
 	future_date = datetime.strptime(order_placement_date, "%Y-%m-%d %H:%M") + timedelta(days=7)
@@ -398,11 +399,13 @@ def modify_position(ctx: Context, id: Union[int, str], stop_loss: Optional[Union
 	"""Modify an open position by ID."""
 	client = get_client(ctx)
 	return client.order.modify_position(id=id, stop_loss=stop_loss, take_profit=take_profit)
+
 @mcp.tool()
 def modify_pending_order(ctx: Context, id: Union[int, str], price: Optional[Union[int, float]] = None, stop_loss: Optional[Union[int, float]] = None, take_profit: Optional[Union[int, float]] = None) -> dict:
 	"""Modify a pending order by ID."""
 	client = get_client(ctx)
 	return client.order.modify_pending_order(id=id, price=price, stop_loss=stop_loss, take_profit=take_profit)
+
 @mcp.tool()
 def close_position(ctx: Context, id: Union[int, str]) -> dict:
 	"""Close an open position by ID."""
