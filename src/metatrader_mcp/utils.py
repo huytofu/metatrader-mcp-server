@@ -41,7 +41,10 @@ def init(
 	return None
 	
 def get_client(ctx: Any) -> Optional[client.MT5Client]:
-	return ctx.request_context.lifespan_context.client
+	try:	
+		return ctx.request_context.lifespan_context.client
+	except:
+		return ctx.client
 
 def initialize_client() -> Optional[client.MT5Client]:
 	return init(os.getenv("login"), os.getenv("password"), os.getenv("server"), os.getenv("mt5_path"))
