@@ -1,6 +1,9 @@
 from typing import Any, Optional, Union
 from metatrader_client import client
 import os
+import dotenv
+
+dotenv.load_dotenv()
 
 def init(
 	login: Optional[Union[str, int]],
