@@ -139,22 +139,18 @@ def calculate_candles_range(ctx: Context, symbol_name: str, timeframe: str, coun
 	}
 
 @mcp.tool()
-def check_if_range_is_channel(ctx: Context, symbol_name: str, timeframe: str, candles_df: pd.DataFrame = None, count: int = 100) -> bool:
+def check_if_range_is_channel(ctx: Context, symbol_name: str, timeframe: str, count: int = 100) -> bool:
 	"""Check if the range of the latest N candles for a symbol and timeframe is a channel.
 	Args:
 		ctx (Context): The context object.
 		symbol_name (str): The symbol name. Example: 'EURUSD'
 		timeframe (str): The timeframe. (Must be one of the following: 'M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M10', 'M12', 'M15', 'M20', 'M30', 'H1', 'H2', 'H3', 'H4', 'H6', 'H8', 'H12', 'D1', 'W1', 'MN1')
-		candles_df (pd.DataFrame): A pandas DataFrame containing the candles for the range.
 		count (int): The number of candles to get. Only relevant if candles_df is not provided.
 	Returns:
 		bool: True if the range is a channel, False otherwise.
 	"""
 	client = get_client(ctx)
-	if candles_df is None:
-		df = client.market.get_candles_latest(symbol_name=symbol_name, timeframe=timeframe, count=count)	
-	else:
-		df = candles_df
+	df = client.market.get_candles_latest(symbol_name=symbol_name, timeframe=timeframe, count=count)	
 	channel_range = df["high"].max() - df["low"].min()
 	two_top_peaks = df.nlargest(2, "high")
 	two_bottom_peaks = df.nsmallest(2, "low")
