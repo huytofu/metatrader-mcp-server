@@ -289,11 +289,15 @@ def historical_test_get_position_trigger_date(ctx: Context, symbol_name: str, ti
 			if should_break:
 				break
 		
-		one_more_candle = df.iloc[count + 1]
-		if one_more_candle["low"] < entry_price_buy and one_more_candle["high"] > entry_price_buy:
-			time_buy = time_buy or one_more_candle["time"]
-		if one_more_candle["low"] < entry_price_sell and one_more_candle["high"] > entry_price_sell:
-			time_sell = time_sell or one_more_candle["time"]
+		# print("entry_price_buy, entry_price_sell: ", entry_price_buy, entry_price_sell)
+		# print("len(df), count: ", len(df), count)
+		# print("Last Candle: ", df.iloc[len(df) - 1])
+		if count < len(df) - 1:
+			one_more_candle = df.iloc[count + 1]
+			if one_more_candle["low"] < entry_price_buy and one_more_candle["high"] > entry_price_buy:
+				time_buy = time_buy or one_more_candle["time"]
+			if one_more_candle["low"] < entry_price_sell and one_more_candle["high"] > entry_price_sell:
+				time_sell = time_sell or one_more_candle["time"]
 
 		return {
 			"buy": time_buy,
