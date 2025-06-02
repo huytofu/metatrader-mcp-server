@@ -36,7 +36,7 @@ def setup_logging():
     log_dir = os.path.join(os.path.dirname(__file__), 'logs')
     os.makedirs(log_dir, exist_ok=True)
     
-    log_file = os.path.join(log_dir, 'usdjpy_cleanup.log')
+    log_file = os.path.join(log_dir, 'cleanup_usdjpy.log')
     
     # Create logger
     logger = logging.getLogger('USJDPYCleanup')

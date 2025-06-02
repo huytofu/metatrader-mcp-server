@@ -707,7 +707,7 @@ def setup_windows_task():
         project_path = os.path.dirname(os.path.dirname(script_path))
         
         # Task name - make it unique for strat_two
-        task_name = f"RangeStraddleStrategy_Two_{STRATEGY_CONFIG['symbol']}_{STRATEGY_CONFIG['timeframe']}"
+        task_name = f"RangeStraddleStrategy_{STRATEGY_CONFIG['symbol']}_{STRATEGY_CONFIG['timeframe']}"
         
         # Delete existing task if it exists
         try:
