@@ -127,7 +127,7 @@ STRATEGY_CONFIG = {
     'analysis_period': 2400,  # Analysis window for percentile calculation
     'risk_per_trade': 0.01,  # 1% risk per trade
     'max_spread_pips': 1,  # Maximum spread to allow trades
-    'min_range_pips': 10,  # Minimum range width in pips
+    'min_range_pips': 8,  # Minimum range width in pips
     'max_daily_trades': 6,  # Maximum trades per day
 }
 
