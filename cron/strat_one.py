@@ -796,7 +796,7 @@ def setup_unix_cron():
         cron = CronTab(user=True)  # Use current user instead of root
         
         # Remove existing jobs for this strategy
-        cron.remove_all(comment='range_straddle_strategy')
+        cron.remove_all(comment='range_straddle_strategy_one')
         
         # Get the absolute path to this script
         script_path = os.path.abspath(__file__)
@@ -806,7 +806,7 @@ def setup_unix_cron():
         command = f"cd {project_path} && python {script_path} --run-once"
         
         # Create new job based on timeframe
-        job = cron.new(command=command, comment='range_straddle_strategy')
+        job = cron.new(command=command, comment='range_straddle_strategy_one')
         
         if STRATEGY_CONFIG['timeframe'] == 'H1':
             # Run every hour at minute 5 (5 minutes after candle close)
@@ -839,7 +839,7 @@ def setup_unix_cron():
         # List current jobs
         logger.info("📋 Current cron jobs:")
         for job in cron:
-            if job.comment == 'range_straddle_strategy':
+            if job.comment == 'range_straddle_strategy_one':
                 logger.info(f"   {job}")
         
         return True
