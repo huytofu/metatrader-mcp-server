@@ -328,7 +328,8 @@ class RangeStraddleStrategy:
             logger.info(f"   Threshold: {percentile_threshold:.5f}")
             
             # Check conditions
-            is_narrow = current_avg_candle_height <= percentile_threshold
+            is_narrow = (current_avg_candle_height <= percentile_threshold) or (range_width <= percentile_threshold*4) 
+            # if range width is less than or equal to 4 times the percentile threshold, then it is a narrow range
             is_channel = self.check_if_range_is_channel_local(range_candles)
             
             # Convert range to pips (for USDJPY, 1 pip = 0.01)
