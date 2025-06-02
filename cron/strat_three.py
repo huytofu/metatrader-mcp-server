@@ -27,8 +27,8 @@ def setup_logging():
     log_dir = os.path.join(os.path.dirname(__file__), 'logs')
     os.makedirs(log_dir, exist_ok=True)
     
-    # Main strategy log with rotation
-    log_file = os.path.join(log_dir, 'range_straddle_strategy_one.log')
+    # Main strategy log with rotation - separate file for strat_three
+    log_file = os.path.join(log_dir, 'range_straddle_strategy_three.log')
     
     # Create formatter with more details
     formatter = logging.Formatter(
@@ -117,8 +117,8 @@ logger = setup_logging()
 # STRATEGY CONFIGURATION
 # These settings should be updated based on your historical test results
 STRATEGY_CONFIG = {
-    'symbol': 'USDJPY',  # Best performing pair from historical tests
-    'timeframe': 'H1',   # Best performing timeframe
+    'symbol': 'EURUSD',  # Best performing pair from historical tests
+    'timeframe': 'M15',   # Best performing timeframe
     'percentile_num': 0.1,  # Best performing percentile threshold (10% or 20%)
     'percentile_larger_num': 0.2,  # Best performing percentile larger threshold (20% or 30%)
     'num_candles': 8,    # Best performing range candles (8 or 12)
@@ -128,7 +128,7 @@ STRATEGY_CONFIG = {
     'risk_per_trade': 0.01,  # 1% risk per trade
     'max_spread_pips': 1,  # Maximum spread to allow trades
     'min_range_pips': 10,  # Minimum range width in pips
-    'max_daily_trades': 8,  # Maximum trades per day
+    'max_daily_trades': 6,  # Maximum trades per day
 }
 
 @dataclass
@@ -324,7 +324,7 @@ class RangeStraddleStrategy:
             )
             percentile_larger_threshold = np.percentile(
                 analysis_candles['candle_range'], 
-                (self.config['percentile_larger_num']) * 100
+                self.config['percentile_larger_num'] * 100
             )
             
             logger.info(f"📊 Percentile analysis:")
@@ -341,7 +341,7 @@ class RangeStraddleStrategy:
             # if range width is less than or equal to 4 times the percentile threshold, or 2 times the percentile larger threshold, then it is a narrow range
             is_channel = self.check_if_range_is_channel_local(range_candles)
             
-            # Convert range to pips (for USDJPY, 1 pip = 0.01)
+            # Convert range to pips (for EURUSD, 1 pip = 0.0001)
             pip_multiplier = 100 if 'JPY' in self.config['symbol'] else 10000
             range_pips = range_width * pip_multiplier
             min_range_met = range_pips >= self.config['min_range_pips']
@@ -706,8 +706,8 @@ def setup_windows_task():
         script_path = os.path.abspath(__file__)
         project_path = os.path.dirname(os.path.dirname(script_path))
         
-        # Task name
-        task_name = f"RangeStraddleStrategy_One_{STRATEGY_CONFIG['symbol']}_{STRATEGY_CONFIG['timeframe']}"
+        # Task name - make it unique for strat_three
+        task_name = f"RangeStraddleStrategy_Three_{STRATEGY_CONFIG['symbol']}_{STRATEGY_CONFIG['timeframe']}"
         
         # Delete existing task if it exists
         try:
@@ -727,9 +727,9 @@ def setup_windows_task():
             logger.info("📅 Windows Task: Every hour at minute 5")
             
         elif STRATEGY_CONFIG['timeframe'] == 'M15':
-            # Run every 15 minutes (Windows Task Scheduler limitation - will run every minute and check internally)
-            schedule = '/SC MINUTE /MO 1'
-            logger.info("📅 Windows Task: Every minute (will check internally for 15-min intervals)")
+            # Run every 15 minutes
+            schedule = '/SC MINUTE /MO 15'
+            logger.info("📅 Windows Task: Every 15 minutes")
             
         elif STRATEGY_CONFIG['timeframe'] == 'M30':
             # Run every 30 minutes
@@ -746,14 +746,6 @@ def setup_windows_task():
             return False
         
         # Create the task
-        create_cmd = [
-            'schtasks', '/Create', '/TN', task_name,
-            '/TR', command,
-            '/SC', 'MINUTE', '/MO', '1' if STRATEGY_CONFIG['timeframe'] == 'M15' else '60',
-            '/F'  # Force create (overwrite if exists)
-        ]
-        
-        # For H1, H4 - use hourly schedule
         if STRATEGY_CONFIG['timeframe'] in ['H1', 'H4']:
             mo = '1' if STRATEGY_CONFIG['timeframe'] == 'H1' else '4'
             create_cmd = [
@@ -768,6 +760,21 @@ def setup_windows_task():
                 'schtasks', '/Create', '/TN', task_name,
                 '/TR', command,
                 '/SC', 'MINUTE', '/MO', '30',
+                '/F'
+            ]
+        elif STRATEGY_CONFIG['timeframe'] == 'M15':
+            # For M15, create a task that runs every 15 minutes
+            create_cmd = [
+                'schtasks', '/Create', '/TN', task_name,
+                '/TR', command,
+                '/SC', 'MINUTE', '/MO', '15',
+                '/F'
+            ]
+        else:
+            create_cmd = [
+                'schtasks', '/Create', '/TN', task_name,
+                '/TR', command,
+                '/SC', 'MINUTE', '/MO', '60',
                 '/F'
             ]
         
@@ -808,7 +815,7 @@ def setup_unix_cron():
         cron = CronTab(user=True)  # Use current user instead of root
         
         # Remove existing jobs for this strategy
-        cron.remove_all(comment='range_straddle_strategy_one')
+        cron.remove_all(comment='range_straddle_strategy_three')
         
         # Get the absolute path to this script
         script_path = os.path.abspath(__file__)
@@ -818,7 +825,7 @@ def setup_unix_cron():
         command = f"cd {project_path} && python {script_path} --run-once"
         
         # Create new job based on timeframe
-        job = cron.new(command=command, comment='range_straddle_strategy_one')
+        job = cron.new(command=command, comment='range_straddle_strategy_three')
         
         if STRATEGY_CONFIG['timeframe'] == 'H1':
             # Run every hour at minute 5 (5 minutes after candle close)
@@ -851,7 +858,7 @@ def setup_unix_cron():
         # List current jobs
         logger.info("📋 Current cron jobs:")
         for job in cron:
-            if job.comment == 'range_straddle_strategy_one':
+            if job.comment == 'range_straddle_strategy_three':
                 logger.info(f"   {job}")
         
         return True
