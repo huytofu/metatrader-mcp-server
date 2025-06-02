@@ -178,11 +178,14 @@ def real_historical_strategy_test(symbol: str, timeframe: str, percentile_num: f
             # Only proceed if we have sufficient data points for reliable percentile
             if len(analysis_candles) >= 50:
                 percentile_threshold = np.percentile(analysis_candles['candle_range'], percentile_num * 100)
+                percentile_threshold_large = np.percentile(analysis_candles['candle_range'], percentile_num * 2 * 100)
             else:
                 continue  # Skip if insufficient data for reliable percentile
             
             # Step 4: Check if average candle height qualifies (narrow + channel)
-            if current_avg_candle_height <= percentile_threshold:
+            if (current_avg_candle_height <= percentile_threshold) or \
+                (range_width <= percentile_threshold * 4) or \
+                (range_width <= percentile_threshold_large * 2):
                 # Use local function to check if range is a channel (avoids MCP serialization issues)
                 is_channel = check_if_range_is_channel_local(range_candles)
                 

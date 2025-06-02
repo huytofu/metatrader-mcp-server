@@ -12,6 +12,7 @@ import logging
 from datetime import datetime, timedelta
 from crontab import CronTab
 from logging.handlers import RotatingFileHandler
+from utils import check_no_pending_orders
 import traceback
 import json
 
@@ -659,12 +660,16 @@ class RangeStraddleStrategy:
             if opportunity['signal']:
                 # Place trades
                 logger.info("🚀 Step 5: Placing trades...")
-                success = self.place_oco_trades(opportunity)
-                if success:
-                    self.log_execution_end(True, "Trade placed successfully")
+                if check_no_pending_orders(self.ctx, self.config['symbol']):
+                    success = self.place_oco_trades(opportunity)
+                    if success:
+                        self.log_execution_end(True, "Trade placed successfully")
+                    else:
+                        self.log_execution_end(False, "Failed to place trades")
+                    return success
                 else:
-                    self.log_execution_end(False, "Failed to place trades")
-                return success
+                    self.log_execution_end(False, "Failed to place trades - Pending orders found")
+                    return False
             else:
                 reason = f"No trading opportunity - {', '.join(opportunity.get('failed_conditions', ['Unknown reasons']))}"
                 self.log_execution_end(True, reason)
