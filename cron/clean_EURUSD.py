@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AUDUSD Position Cleanup Task
+EURUSD Position Cleanup Task
 Runs every 1 hour to clean up conflicting pending orders based on open positions
 """
 
@@ -23,8 +23,8 @@ from metatrader_mcp.server import *
 from dataclasses import dataclass
 
 # Configuration
-SYMBOL = "AUDUSD"
-TASK_NAME = "Position_Cleanup_AUDUSD"
+SYMBOL = "EURUSD"
+TASK_NAME = "Position_Cleanup_EURUSD"
 
 @dataclass
 class AppContext:
@@ -36,10 +36,10 @@ def setup_logging():
     log_dir = os.path.join(os.path.dirname(__file__), 'logs')
     os.makedirs(log_dir, exist_ok=True)
     
-    log_file = os.path.join(log_dir, 'audusd_cleanup.log')
+    log_file = os.path.join(log_dir, 'eurusd_cleanup.log')
     
     # Create logger
-    logger = logging.getLogger('AUDUSDCleanup')
+    logger = logging.getLogger('EURUSDCleanup')
     logger.setLevel(logging.INFO)
     
     # Clear any existing handlers
@@ -99,8 +99,8 @@ class CleanupResult:
     orders_cancelled: int = 0
     error_message: str = None
 
-class AUDUSDCleanupTask:
-    """AUDUSD Position Cleanup Task"""
+class EURUSDCleanupTask:
+    """EURUSD Position Cleanup Task"""
     
     def __init__(self):
         self.logger = setup_logging()
@@ -152,8 +152,8 @@ class AUDUSDCleanupTask:
             self.logger.error(f"{emoji_or_text('📋', '[TRC]')} {traceback.format_exc()}")
             return False
     
-    def get_audusd_positions(self):
-        """Get open AUDUSD positions"""
+    def get_eurusd_positions(self):
+        """Get open EURUSD positions"""
         try:
             self.logger.info(f"{emoji_or_text('🔍', '[POS]')} Checking {SYMBOL} open positions...")
             
@@ -177,8 +177,8 @@ class AUDUSDCleanupTask:
             self.logger.error(f"{emoji_or_text('📋', '[TRC]')} {traceback.format_exc()}")
             return None
     
-    def get_audusd_pending_orders(self):
-        """Get pending AUDUSD orders"""
+    def get_eurusd_pending_orders(self):
+        """Get pending EURUSD orders"""
         try:
             self.logger.info(f"{emoji_or_text('📋', '[ORD]')} Checking {SYMBOL} pending orders...")
             
@@ -274,7 +274,7 @@ class AUDUSDCleanupTask:
                 )
             
             # Get open positions
-            positions = self.get_audusd_positions()
+            positions = self.get_eurusd_positions()
             if positions is None:
                 return CleanupResult(
                     success=False,
@@ -296,7 +296,7 @@ class AUDUSDCleanupTask:
             self.logger.info(f"{emoji_or_text('📊', '[POS]')} Current {SYMBOL} position type: {first_position_type}")
             
             # Get pending orders
-            pending_orders = self.get_audusd_pending_orders()
+            pending_orders = self.get_eurusd_pending_orders()
             if pending_orders is None:
                 return CleanupResult(
                     success=False,
@@ -422,9 +422,9 @@ def setup_unix_cron():
     except Exception as e:
         print(f"❌ Error setting up Unix cron: {e}")
 
-def clean_AUDUSD():
+def clean_EURUSD():
     """Main function to run the cleanup task"""
-    cleanup_task = AUDUSDCleanupTask()
+    cleanup_task = EURUSDCleanupTask()
     result = cleanup_task.run_cleanup()
     return result
 
@@ -444,11 +444,11 @@ def main():
         else:  # Unix/Linux/Mac
             setup_unix_cron()
     elif args.run or args.run_once:
-        result = clean_AUDUSD()
+        result = clean_EURUSD()
         if not result.success:
             sys.exit(1)
     else:
         parser.print_help()
 
 if __name__ == "__main__":
-    main()
+    main() 

@@ -24,7 +24,7 @@ from dataclasses import dataclass
 
 # Configuration
 SYMBOL = "USDJPY"
-TASK_NAME = "USDJPY_Position_Cleanup"
+TASK_NAME = "Position_Cleanup_USDJPY"
 
 @dataclass
 class AppContext:
