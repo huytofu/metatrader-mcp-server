@@ -120,6 +120,7 @@ STRATEGY_CONFIG = {
     'symbol': 'USDJPY',  # Best performing pair from historical tests
     'timeframe': 'H1',   # Best performing timeframe
     'percentile_num': 0.1,  # Best performing percentile threshold (10% or 20%)
+    'percentile_larger_num': 0.2,  # Best performing percentile larger threshold (20% or 30%)
     'num_candles': 10,    # Best performing range candles (8 or 12)
     'safety_factor': 0.2,  # Entry buffer
     'tp_sl_ratio': 2.0,  # Best performing TP:SL ratio (1.0, 1.5, or 2.0)
@@ -321,15 +322,23 @@ class RangeStraddleStrategy:
                 analysis_candles['candle_range'], 
                 self.config['percentile_num'] * 100
             )
+            percentile_larger_threshold = np.percentile(
+                analysis_candles['candle_range'], 
+                (self.config['percentile_larger_num']) * 100
+            )
             
             logger.info(f"📊 Percentile analysis:")
             logger.info(f"   Analysis period: {len(analysis_candles)} candles")
             logger.info(f"   Percentile: {self.config['percentile_num'] * 100}%")
+            logger.info(f"   Percentile larger: {self.config['percentile_larger_num'] * 100}%")
             logger.info(f"   Threshold: {percentile_threshold:.5f}")
+            logger.info(f"   Threshold larger: {percentile_larger_threshold:.5f}")
             
             # Check conditions
-            is_narrow = (current_avg_candle_height <= percentile_threshold) or (range_width <= percentile_threshold*4) 
-            # if range width is less than or equal to 4 times the percentile threshold, then it is a narrow range
+            is_narrow = (current_avg_candle_height <= percentile_threshold) or \
+                        (range_width <= percentile_threshold*4) or \
+                        (range_width <= percentile_larger_threshold*2)
+            # if range width is less than or equal to 4 times the percentile threshold, or 2 times the percentile larger threshold, then it is a narrow range
             is_channel = self.check_if_range_is_channel_local(range_candles)
             
             # Convert range to pips (for USDJPY, 1 pip = 0.01)
