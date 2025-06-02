@@ -11,6 +11,9 @@ import os
 import logging
 from datetime import datetime, timedelta
 from crontab import CronTab
+from logging.handlers import RotatingFileHandler
+import traceback
+import json
 
 # Add src directory to Python path
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'src'))
@@ -18,16 +21,98 @@ sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'src'))
 from metatrader_mcp.server import *
 from dataclasses import dataclass
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('range_straddle_strategy.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
+# Enhanced logging configuration with rotation
+def setup_logging():
+    """Setup enhanced logging with rotation and detailed formatting"""
+    log_dir = os.path.join(os.path.dirname(__file__), 'logs')
+    os.makedirs(log_dir, exist_ok=True)
+    
+    # Main strategy log with rotation - separate file for strat_two
+    log_file = os.path.join(log_dir, 'range_straddle_strategy_two.log')
+    
+    # Create formatter with more details
+    formatter = logging.Formatter(
+        '%(asctime)s | %(levelname)-8s | %(funcName)-20s | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    
+    # Setup rotating file handler (10MB max, keep 5 backups)
+    file_handler = RotatingFileHandler(
+        log_file, 
+        maxBytes=10*1024*1024,  # 10MB
+        backupCount=5,
+        encoding='utf-8'  # Ensure UTF-8 encoding for file
+    )
+    file_handler.setFormatter(formatter)
+    file_handler.setLevel(logging.INFO)
+    
+    # Setup console handler with fallback encoding
+    console_handler = logging.StreamHandler()
+    
+    # Create a simpler formatter for console (no emojis on Windows)
+    import platform
+    if platform.system().lower() == 'windows':
+        # Windows console formatter without emojis
+        console_formatter = logging.Formatter(
+            '%(asctime)s | %(levelname)-8s | %(funcName)-20s | %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        # Filter out emoji characters for console on Windows
+        class NoEmojiFilter(logging.Filter):
+            def filter(self, record):
+                # Replace common emojis with text equivalents for console
+                if hasattr(record, 'msg'):
+                    msg = str(record.msg)
+                    msg = msg.replace('🚀', '[START]')
+                    msg = msg.replace('🏁', '[END]')
+                    msg = msg.replace('✅', '[OK]')
+                    msg = msg.replace('❌', '[ERROR]')
+                    msg = msg.replace('⚠️', '[WARN]')
+                    msg = msg.replace('📊', '[DATA]')
+                    msg = msg.replace('📅', '[TIME]')
+                    msg = msg.replace('💎', '[SYMBOL]')
+                    msg = msg.replace('⏰', '[TIMEFRAME]')
+                    msg = msg.replace('📋', '[STATUS]')
+                    msg = msg.replace('💰', '[TRADE]')
+                    msg = msg.replace('⏸️', '[NO_TRADE]')
+                    msg = msg.replace('📝', '[REASON]')
+                    msg = msg.replace('🧪', '[TEST]')
+                    msg = msg.replace('🔌', '[CONNECT]')
+                    msg = msg.replace('🔗', '[STEP]')
+                    msg = msg.replace('🏪', '[MARKET]')
+                    msg = msg.replace('📈', '[BUY]')
+                    msg = msg.replace('📉', '[SELL]')
+                    msg = msg.replace('🔍', '[ANALYZE]')
+                    msg = msg.replace('📏', '[RANGE]')
+                    msg = msg.replace('🎯', '[TARGET]')
+                    msg = msg.replace('💼', '[RISK]')
+                    msg = msg.replace('🎁', '[REWARD]')
+                    msg = msg.replace('⚖️', '[RATIO]')
+                    msg = msg.replace('🕐', '[HOUR]')
+                    msg = msg.replace('🔄', '[CANCEL]')
+                    msg = msg.replace('📤', '[PLACE]')
+                    msg = msg.replace('🛑', '[SKIP]')
+                    record.msg = msg
+                return True
+        
+        console_handler.addFilter(NoEmojiFilter())
+    else:
+        console_formatter = formatter
+    
+    console_handler.setFormatter(console_formatter)
+    console_handler.setLevel(logging.INFO)
+    
+    # Configure logger
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+    logger.handlers.clear()  # Clear any existing handlers
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+    
+    return logger
+
+# Setup logging
+logger = setup_logging()
 
 # STRATEGY CONFIGURATION
 # These settings should be updated based on your historical test results
@@ -59,47 +144,114 @@ class RangeStraddleStrategy:
         self.ctx = None
         self.daily_trades_count = 0
         self.last_trade_date = None
+        self.execution_id = None
+        
+    def log_execution_start(self):
+        """Log the start of strategy execution with detailed context"""
+        self.execution_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        logger.info("=" * 80)
+        logger.info(f"🚀 STRATEGY EXECUTION START - ID: {self.execution_id}")
+        logger.info("=" * 80)
+        logger.info(f"📅 Execution Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"🎯 Symbol: {self.config['symbol']}")
+        logger.info(f"⏰ Timeframe: {self.config['timeframe']}")
+        logger.info(f"📊 Configuration:")
+        for key, value in self.config.items():
+            logger.info(f"   {key}: {value}")
+        logger.info("-" * 80)
+        
+    def log_execution_end(self, success, reason=""):
+        """Log the end of strategy execution"""
+        status = "SUCCESS" if success else "FAILED"
+        logger.info("-" * 80)
+        logger.info(f"🏁 STRATEGY EXECUTION END - ID: {self.execution_id} - {status}")
+        if reason:
+            logger.info(f"📝 Reason: {reason}")
+        logger.info("=" * 80)
+        logger.info("")  # Empty line for readability
         
     def initialize(self):
-        """Initialize MT5 connection"""
+        """Initialize MT5 connection with detailed logging"""
         try:
+            logger.info("🔌 Initializing MT5 connection...")
+            
             client = initialize_client()
             self.ctx = AppContext(client=client)
-            logger.info("✅ MT5 connection initialized successfully")
-            return True
+            
+            # Test connection by getting account info
+            logger.info("🧪 Testing MT5 connection...")
+            account_info = get_account_info(ctx=self.ctx)
+            
+            if account_info:
+                logger.info("✅ MT5 connection successful")
+                logger.info(f"💰 Account Info:")
+                logger.info(f"   Balance: {account_info.get('balance', 'N/A')}")
+                logger.info(f"   Equity: {account_info.get('equity', 'N/A')}")
+                logger.info(f"   Currency: {account_info.get('currency', 'N/A')}")
+                logger.info(f"   Leverage: {account_info.get('leverage', 'N/A')}")
+                return True
+            else:
+                logger.error("❌ Failed to get account info - connection test failed")
+                return False
+                
         except Exception as e:
-            logger.error(f"❌ Failed to initialize MT5 connection: {e}")
+            logger.error(f"❌ MT5 connection failed: {str(e)}")
+            logger.error(f"🔍 Error details: {traceback.format_exc()}")
             return False
     
     def check_market_conditions(self):
         """Check if market is open and conditions are suitable for trading"""
         try:
+            logger.info("🏪 Checking market conditions...")
+            
             # Check if market is open
             current_time = datetime.now()
+            logger.info(f"📅 Current time: {current_time.strftime('%Y-%m-%d %H:%M:%S %A')}")
             
             # Reset daily trade count if new day
             if self.last_trade_date != current_time.date():
+                old_count = self.daily_trades_count
                 self.daily_trades_count = 0
                 self.last_trade_date = current_time.date()
+                logger.info(f"📅 New day detected - resetting trade count from {old_count} to 0")
             
             # Check daily trade limit
+            logger.info(f"📊 Daily trades: {self.daily_trades_count}/{self.config['max_daily_trades']}")
+            
             if self.daily_trades_count >= self.config['max_daily_trades']:
-                logger.info(f"⏸️ Daily trade limit reached ({self.daily_trades_count}/{self.config['max_daily_trades']})")
+                logger.warning(f"⏸️ Daily trade limit reached ({self.daily_trades_count}/{self.config['max_daily_trades']})")
+                logger.info("📋 Market conditions check: FAILED - Daily limit reached")
                 return False
             
-            # Add market hours check here if needed
-            # For forex, market is generally open 24/5
+            # Check market hours (forex is generally 24/5)
+            weekday = current_time.weekday()  # 0=Monday, 6=Sunday
+            if weekday >= 5:  # Saturday or Sunday
+                logger.warning(f"⏸️ Weekend detected (weekday: {weekday}) - market likely closed")
+                logger.info("📋 Market conditions check: FAILED - Weekend")
+                return False
             
+            # Check if it's within reasonable trading hours (optional)
+            hour = current_time.hour
+            logger.info(f"🕐 Current hour: {hour}")
+            
+            logger.info("✅ Market conditions check: PASSED")
             return True
             
         except Exception as e:
-            logger.error(f"❌ Error checking market conditions: {e}")
+            logger.error(f"❌ Error checking market conditions: {str(e)}")
+            logger.error(f"🔍 Error details: {traceback.format_exc()}")
             return False
     
     def get_market_data(self):
-        """Retrieve latest market data"""
+        """Retrieve latest market data with detailed logging"""
         try:
             total_candles_needed = self.config['analysis_period'] + self.config['num_candles'] + 10
+            
+            logger.info(f"📊 Requesting market data...")
+            logger.info(f"   Symbol: {self.config['symbol']}")
+            logger.info(f"   Timeframe: {self.config['timeframe']}")
+            logger.info(f"   Candles needed: {total_candles_needed}")
             
             candles_df = get_candles_latest(
                 ctx=self.ctx,
@@ -108,8 +260,14 @@ class RangeStraddleStrategy:
                 count=total_candles_needed
             )
             
-            if candles_df.empty or len(candles_df) < self.config['analysis_period']:
-                logger.error(f"❌ Insufficient data for {self.config['symbol']}")
+            if candles_df is None or candles_df.empty:
+                logger.error(f"❌ No data returned for {self.config['symbol']}")
+                return None
+                
+            logger.info(f"📈 Retrieved {len(candles_df)} candles")
+            
+            if len(candles_df) < self.config['analysis_period']:
+                logger.error(f"❌ Insufficient data: got {len(candles_df)}, need {self.config['analysis_period']}")
                 return None
             
             # Prepare data
@@ -117,26 +275,44 @@ class RangeStraddleStrategy:
             candles_df = candles_df.sort_values('time').reset_index(drop=True)
             candles_df['candle_range'] = candles_df['high'] - candles_df['low']
             
-            logger.info(f"📊 Retrieved {len(candles_df)} candles for analysis")
+            # Log latest candle info
+            latest_candle = candles_df.iloc[-1]
+            logger.info(f"📊 Latest candle ({latest_candle['time']}):")
+            logger.info(f"   OHLC: {latest_candle['open']:.5f} | {latest_candle['high']:.5f} | {latest_candle['low']:.5f} | {latest_candle['close']:.5f}")
+            logger.info(f"   Range: {latest_candle['candle_range']:.5f}")
+            
+            logger.info(f"✅ Market data retrieved successfully")
             return candles_df
             
         except Exception as e:
-            logger.error(f"❌ Error retrieving market data: {e}")
+            logger.error(f"❌ Error retrieving market data: {str(e)}")
+            logger.error(f"🔍 Error details: {traceback.format_exc()}")
             return None
     
     def analyze_range_opportunity(self, candles_df):
-        """Analyze current range for trading opportunity"""
+        """Analyze current range for trading opportunity with detailed logging"""
         try:
+            logger.info("🔍 Starting range analysis...")
+            
             # Get latest complete candle (not current forming candle)
             latest_idx = len(candles_df) - 2  # -2 to get last complete candle
             range_start_idx = latest_idx - self.config['num_candles'] + 1
             range_candles = candles_df.iloc[range_start_idx:latest_idx+1]
+            
+            logger.info(f"📊 Analyzing range from index {range_start_idx} to {latest_idx}")
+            logger.info(f"📊 Range candles: {len(range_candles)} candles")
             
             # Calculate range metrics
             range_high = range_candles['high'].max()
             range_low = range_candles['low'].min()
             range_width = range_high - range_low
             current_avg_candle_height = range_candles['candle_range'].mean()
+            
+            logger.info(f"📏 Range metrics:")
+            logger.info(f"   High: {range_high:.5f}")
+            logger.info(f"   Low: {range_low:.5f}")
+            logger.info(f"   Width: {range_width:.5f}")
+            logger.info(f"   Avg candle height: {current_avg_candle_height:.5f}")
             
             # Calculate percentile threshold
             analysis_start_idx = max(0, latest_idx - self.config['analysis_period'])
@@ -146,41 +322,88 @@ class RangeStraddleStrategy:
                 self.config['percentile_num'] * 100
             )
             
+            logger.info(f"📊 Percentile analysis:")
+            logger.info(f"   Analysis period: {len(analysis_candles)} candles")
+            logger.info(f"   Percentile: {self.config['percentile_num'] * 100}%")
+            logger.info(f"   Threshold: {percentile_threshold:.5f}")
+            
             # Check conditions
             is_narrow = current_avg_candle_height <= percentile_threshold
             is_channel = self.check_if_range_is_channel_local(range_candles)
             
-            # Convert range to pips (for USDJPY, 1 pip = 0.01)
+            # Convert range to pips (for AUDUSD, 1 pip = 0.0001)
             pip_multiplier = 100 if 'JPY' in self.config['symbol'] else 10000
             range_pips = range_width * pip_multiplier
+            min_range_met = range_pips >= self.config['min_range_pips']
             
             current_time = candles_df.iloc[latest_idx]['time']
             
-            logger.info(f"🕐 {current_time} | {self.config['symbol']} {self.config['timeframe']}")
-            logger.info(f"📊 Range: {range_width:.5f} ({range_pips:.1f} pips)")
-            logger.info(f"📏 Avg Height: {current_avg_candle_height:.5f} | Threshold: {percentile_threshold:.5f}")
-            logger.info(f"✅ Narrow: {is_narrow} | Channel: {is_channel} | Min Range: {range_pips >= self.config['min_range_pips']}")
+            logger.info(f"🧪 Condition checks:")
+            logger.info(f"   Narrow condition: {is_narrow} (avg height {current_avg_candle_height:.5f} <= threshold {percentile_threshold:.5f})")
+            logger.info(f"   Channel condition: {is_channel}")
+            logger.info(f"   Min range condition: {min_range_met} (range {range_pips:.1f} pips >= min {self.config['min_range_pips']} pips)")
             
-            if is_narrow and is_channel and range_pips >= self.config['min_range_pips']:
+            # Log detailed analysis results
+            logger.info(f"📋 ANALYSIS SUMMARY:")
+            logger.info(f"   Time: {current_time}")
+            logger.info(f"   Symbol: {self.config['symbol']} {self.config['timeframe']}")
+            logger.info(f"   Range: {range_width:.5f} ({range_pips:.1f} pips)")
+            logger.info(f"   Conditions: Narrow={is_narrow} | Channel={is_channel} | MinRange={min_range_met}")
+            
+            all_conditions_met = is_narrow and is_channel and min_range_met
+            
+            if all_conditions_met:
+                logger.info(f"✅ TRADE OPPORTUNITY DETECTED!")
+                logger.info(f"   All conditions satisfied for trade setup")
+                
                 return {
                     'signal': True,
                     'range_high': range_high,
                     'range_low': range_low,
                     'range_width': range_width,
                     'range_pips': range_pips,
-                    'current_time': current_time
+                    'current_time': current_time,
+                    'conditions': {
+                        'is_narrow': is_narrow,
+                        'is_channel': is_channel,
+                        'min_range_met': min_range_met,
+                        'avg_candle_height': current_avg_candle_height,
+                        'percentile_threshold': percentile_threshold
+                    }
                 }
             else:
-                logger.info(f"⏸️ No trade opportunity")
-                return {'signal': False}
+                failed_conditions = []
+                if not is_narrow:
+                    failed_conditions.append(f"Range is not Narrow (avg height {current_avg_candle_height:.5f} > threshold {percentile_threshold:.5f})")
+                if not is_channel:
+                    failed_conditions.append("Range is not a Channel (range not detected as channel)")
+                if not min_range_met:
+                    failed_conditions.append(f"Range is too small (range {range_pips:.1f} pips < min {self.config['min_range_pips']} pips)")
+                
+                logger.info(f"⏸️ NO TRADE OPPORTUNITY")
+                logger.info(f"   Failed conditions: {', '.join(failed_conditions)}")
+                
+                return {
+                    'signal': False,
+                    'failed_conditions': failed_conditions,
+                    'conditions': {
+                        'is_narrow': is_narrow,
+                        'is_channel': is_channel,
+                        'min_range_met': min_range_met,
+                        'avg_candle_height': current_avg_candle_height,
+                        'percentile_threshold': percentile_threshold
+                    }
+                }
                 
         except Exception as e:
-            logger.error(f"❌ Error analyzing range opportunity: {e}")
-            return {'signal': False}
+            logger.error(f"❌ Error analyzing range opportunity: {str(e)}")
+            logger.error(f"🔍 Error details: {traceback.format_exc()}")
+            return {'signal': False, 'error': str(e)}
     
     def check_if_range_is_channel_local(self, candles_df):
-        """Local channel detection function"""
+        """Local channel detection function with detailed logging"""
         if candles_df.empty or len(candles_df) < 2:
+            logger.warning(f"⚠️ Channel check: insufficient data ({len(candles_df)} candles)")
             return False
         
         try:
@@ -189,27 +412,48 @@ class RangeStraddleStrategy:
             two_top_peaks = candles_df.nlargest(2, "high")
             two_bottom_peaks = candles_df.nsmallest(2, "low")
             
+            logger.debug(f"🔍 Channel analysis:")
+            logger.debug(f"   Channel range: {channel_range:.5f}")
+            logger.debug(f"   Top peaks: {len(two_top_peaks)}")
+            logger.debug(f"   Bottom peaks: {len(two_bottom_peaks)}")
+            
             if len(two_top_peaks) < 2 or len(two_bottom_peaks) < 2:
+                logger.debug(f"⚠️ Channel check: insufficient peaks")
                 return False
             
             top_peaks_diff = two_top_peaks["high"].diff()
             bottom_peaks_diff = two_bottom_peaks["low"].diff()
             
             if len(top_peaks_diff) < 2 or len(bottom_peaks_diff) < 2:
+                logger.debug(f"⚠️ Channel check: insufficient peak differences")
                 return False
                 
             top_diff = abs(top_peaks_diff.iloc[1]) if not pd.isna(top_peaks_diff.iloc[1]) else 0
             bottom_diff = abs(bottom_peaks_diff.iloc[1]) if not pd.isna(bottom_peaks_diff.iloc[1]) else 0
             
-            return (top_diff <= channel_range * 0.2 and bottom_diff <= channel_range * 0.2)
+            top_threshold = channel_range * 0.2
+            bottom_threshold = channel_range * 0.2
+            
+            is_channel = (top_diff <= top_threshold and bottom_diff <= bottom_threshold)
+            
+            logger.debug(f"   Top diff: {top_diff:.5f} (threshold: {top_threshold:.5f})")
+            logger.debug(f"   Bottom diff: {bottom_diff:.5f} (threshold: {bottom_threshold:.5f})")
+            logger.debug(f"   Is channel: {is_channel}")
+            
+            return is_channel
             
         except Exception as e:
             logger.warning(f"⚠️ Channel detection error: {e}, defaulting to False")
+            logger.debug(f"🔍 Channel error details: {traceback.format_exc()}")
             return False
     
     def calculate_position_size(self, stop_loss_distance):
-        """Calculate position size based on risk management"""
+        """Calculate position size based on risk management with logging"""
         try:
+            logger.info(f"💰 Calculating position size...")
+            logger.info(f"   Stop loss distance: {stop_loss_distance:.5f}")
+            logger.info(f"   Risk per trade: {self.config['risk_per_trade'] * 100}%")
+            
             # This is a simplified calculation
             # In practice, you'd get account balance and implement proper risk management
             
@@ -217,16 +461,22 @@ class RangeStraddleStrategy:
             # TODO: Implement proper position sizing based on account balance and risk
             lot_size = 0.1
             
-            logger.info(f"💰 Calculated position size: {lot_size} lots")
+            logger.info(f"💰 Calculated position size: {lot_size} lots (fixed)")
+            logger.warning(f"⚠️ Using fixed lot size - implement proper risk management!")
+            
             return lot_size
             
         except Exception as e:
-            logger.error(f"❌ Error calculating position size: {e}")
+            logger.error(f"❌ Error calculating position size: {str(e)}")
+            logger.error(f"🔍 Error details: {traceback.format_exc()}")
             return 0.01  # Minimum lot size as fallback
     
     def place_oco_trades(self, opportunity_data):
-        """Place OCO (One Cancels Other) trades"""
+        """Place OCO (One Cancels Other) trades with comprehensive logging"""
         try:
+            logger.info(f"🚀 INITIATING TRADE PLACEMENT")
+            logger.info(f"=" * 60)
+            
             # First check if there are any existing open positions for this symbol
             logger.info(f"🔍 Checking existing positions for {self.config['symbol']}...")
             
@@ -245,7 +495,8 @@ class RangeStraddleStrategy:
                     logger.info(f"✅ No existing positions found for {self.config['symbol']} - proceeding with trade setup")
                     
             except Exception as e:
-                logger.error(f"❌ Error checking existing positions: {e}")
+                logger.error(f"❌ Error checking existing positions: {str(e)}")
+                logger.error(f"🔍 Error details: {traceback.format_exc()}")
                 logger.warning(f"🛑 Skipping trade placement due to position check failure")
                 return False
             
@@ -269,10 +520,25 @@ class RangeStraddleStrategy:
             # Calculate position size
             lot_size = self.calculate_position_size(stop_loss_distance)
             
-            logger.info(f"🚀 TRADE OPPORTUNITY DETECTED!")
-            logger.info(f"📈 BUY STOP: {buy_stop_price:.5f} | TP: {buy_tp:.5f} | SL: {buy_sl:.5f}")
-            logger.info(f"📉 SELL STOP: {sell_stop_price:.5f} | TP: {sell_tp:.5f} | SL: {sell_sl:.5f}")
-            logger.info(f"💱 Lot Size: {lot_size}")
+            # Convert to pips for logging
+            pip_multiplier = 100 if 'JPY' in self.config['symbol'] else 10000
+            
+            logger.info(f"📊 TRADE CALCULATION SUMMARY:")
+            logger.info(f"   Range: {range_low:.5f} - {range_high:.5f} (width: {range_width:.5f})")
+            logger.info(f"   Safety factor: {self.config['safety_factor']}")
+            logger.info(f"   TP:SL ratio: {self.config['tp_sl_ratio']}")
+            logger.info(f"   Position size: {lot_size} lots")
+            logger.info(f"")
+            logger.info(f"📈 BUY STOP ORDER:")
+            logger.info(f"   Entry: {buy_stop_price:.5f}")
+            logger.info(f"   Take Profit: {buy_tp:.5f} (+{take_profit_distance * pip_multiplier:.1f} pips)")
+            logger.info(f"   Stop Loss: {buy_sl:.5f} (-{stop_loss_distance * pip_multiplier:.1f} pips)")
+            logger.info(f"")
+            logger.info(f"📉 SELL STOP ORDER:")
+            logger.info(f"   Entry: {sell_stop_price:.5f}")
+            logger.info(f"   Take Profit: {sell_tp:.5f} (+{take_profit_distance * pip_multiplier:.1f} pips)")
+            logger.info(f"   Stop Loss: {sell_sl:.5f} (-{stop_loss_distance * pip_multiplier:.1f} pips)")
+            logger.info(f"")
             
             # Place BUY STOP order using MCP tool
             logger.info("📤 Placing BUY STOP order...")
@@ -286,11 +552,14 @@ class RangeStraddleStrategy:
                 take_profit=buy_tp
             )
             
+            logger.info(f"📋 BUY order result: {buy_order_result}")
+            
             if buy_order_result.get('error', False):
                 logger.error(f"❌ Failed to place BUY order: {buy_order_result.get('message', 'Unknown error')}")
                 return False
             else:
-                logger.info(f"✅ BUY order placed successfully: {buy_order_result.get('message', 'Success')}")
+                buy_order_id = buy_order_result.get('data', {}).order if 'data' in buy_order_result else 'N/A'
+                logger.info(f"✅ BUY order placed successfully - Order ID: {buy_order_id}")
             
             # Place SELL STOP order using MCP tool
             logger.info("📤 Placing SELL STOP order...")
@@ -304,68 +573,95 @@ class RangeStraddleStrategy:
                 take_profit=sell_tp
             )
             
+            logger.info(f"📋 SELL order result: {sell_order_result}")
+            
             if sell_order_result.get('error', False):
                 logger.error(f"❌ Failed to place SELL order: {sell_order_result.get('message', 'Unknown error')}")
                 # Cancel the BUY order if SELL order fails
                 if 'data' in buy_order_result and hasattr(buy_order_result['data'], 'order'):
                     try:
+                        logger.info(f"🔄 Attempting to cancel BUY order due to SELL order failure...")
                         cancel_result = cancel_pending_order(ctx=self.ctx, id=buy_order_result['data'].order)
-                        logger.info(f"🔄 Cancelled BUY order due to SELL order failure")
+                        logger.info(f"🔄 BUY order cancelled: {cancel_result}")
                     except Exception as e:
-                        logger.error(f"❌ Failed to cancel BUY order: {e}")
+                        logger.error(f"❌ Failed to cancel BUY order: {str(e)}")
                 return False
             else:
-                logger.info(f"✅ SELL order placed successfully: {sell_order_result.get('message', 'Success')}")
+                sell_order_id = sell_order_result.get('data', {}).order if 'data' in sell_order_result else 'N/A'
+                logger.info(f"✅ SELL order placed successfully - Order ID: {sell_order_id}")
             
-            # Log trade summary
-            logger.info(f"🎯 OCO TRADE SETUP COMPLETED!")
-            logger.info(f"   📈 BUY Order ID: {buy_order_result.get('data', {}).order if 'data' in buy_order_result else 'N/A'}")
-            logger.info(f"   📉 SELL Order ID: {sell_order_result.get('data', {}).order if 'data' in sell_order_result else 'N/A'}")
-            logger.info(f"   💼 Risk: {range_width:.5f} | Reward: {take_profit_distance:.5f} | R:R = 1:{self.config['tp_sl_ratio']}")
+            # Log comprehensive trade summary
+            logger.info(f"")
+            logger.info(f"🎯 OCO TRADE SETUP COMPLETED SUCCESSFULLY!")
+            logger.info(f"=" * 60)
+            logger.info(f"📅 Time: {opportunity_data['current_time']}")
+            logger.info(f"💎 Symbol: {self.config['symbol']}")
+            logger.info(f"⏰ Timeframe: {self.config['timeframe']}")
+            logger.info(f"📈 BUY Order ID: {buy_order_id}")
+            logger.info(f"📉 SELL Order ID: {sell_order_id}")
+            logger.info(f"💼 Risk: {range_width * pip_multiplier:.1f} pips")
+            logger.info(f"🎁 Reward: {take_profit_distance * pip_multiplier:.1f} pips")
+            logger.info(f"⚖️ Risk:Reward = 1:{self.config['tp_sl_ratio']}")
+            logger.info(f"💰 Position Size: {lot_size} lots")
+            logger.info(f"📊 Trade #{self.daily_trades_count + 1} of max {self.config['max_daily_trades']} today")
+            logger.info(f"=" * 60)
             
             self.daily_trades_count += 1
+            logger.info(f"📈 Updated daily trade count: {self.daily_trades_count}")
             
             return True
             
         except Exception as e:
-            logger.error(f"❌ Error placing OCO trades: {e}")
+            logger.error(f"❌ Error placing OCO trades: {str(e)}")
+            logger.error(f"🔍 Error details: {traceback.format_exc()}")
             return False
     
     def run_strategy(self):
-        """Main strategy execution function"""
-        logger.info(f"🚀 Starting Range Straddle Strategy - {self.config['symbol']} {self.config['timeframe']}")
+        """Main strategy execution function with comprehensive logging"""
+        self.log_execution_start()
         
         try:
             # Initialize connection
+            logger.info("🔗 Step 1: Initializing MT5 connection...")
             if not self.initialize():
+                self.log_execution_end(False, "MT5 connection failed")
                 return False
             
             # Check market conditions
+            logger.info("🏪 Step 2: Checking market conditions...")
             if not self.check_market_conditions():
+                self.log_execution_end(False, "Market conditions not suitable")
                 return False
             
             # Get market data
+            logger.info("📊 Step 3: Retrieving market data...")
             candles_df = self.get_market_data()
             if candles_df is None:
+                self.log_execution_end(False, "Failed to retrieve market data")
                 return False
             
             # Analyze for opportunities
+            logger.info("🔍 Step 4: Analyzing range opportunities...")
             opportunity = self.analyze_range_opportunity(candles_df)
             
             if opportunity['signal']:
                 # Place trades
+                logger.info("🚀 Step 5: Placing trades...")
                 success = self.place_oco_trades(opportunity)
                 if success:
-                    logger.info(f"✅ Strategy execution completed successfully")
+                    self.log_execution_end(True, "Trade placed successfully")
                 else:
-                    logger.error(f"❌ Failed to place trades")
+                    self.log_execution_end(False, "Failed to place trades")
                 return success
             else:
-                logger.info(f"⏸️ No trading opportunity found")
+                reason = f"No trading opportunity - {', '.join(opportunity.get('failed_conditions', ['Unknown reasons']))}"
+                self.log_execution_end(True, reason)
                 return True
                 
         except Exception as e:
-            logger.error(f"❌ Strategy execution failed: {e}")
+            logger.error(f"❌ Strategy execution failed: {str(e)}")
+            logger.error(f"🔍 Error details: {traceback.format_exc()}")
+            self.log_execution_end(False, f"Exception: {str(e)}")
             return False
 
 def strat_one():
@@ -399,7 +695,7 @@ def setup_windows_task():
         project_path = os.path.dirname(os.path.dirname(script_path))
         
         # Task name - make it unique for strat_two
-        task_name = f"RangeStraddleStrategy_{STRATEGY_CONFIG['symbol']}_{STRATEGY_CONFIG['timeframe']}"
+        task_name = f"RangeStraddleStrategy_Two_{STRATEGY_CONFIG['symbol']}_{STRATEGY_CONFIG['timeframe']}"
         
         # Delete existing task if it exists
         try:
@@ -419,9 +715,9 @@ def setup_windows_task():
             logger.info("📅 Windows Task: Every hour at minute 5")
             
         elif STRATEGY_CONFIG['timeframe'] == 'M15':
-            # Run every 15 minutes (Windows Task Scheduler limitation - will run every minute and check internally)
-            schedule = '/SC MINUTE /MO 1'
-            logger.info("📅 Windows Task: Every minute (will check internally for 15-min intervals)")
+            # Run every 15 minutes
+            schedule = '/SC MINUTE /MO 15'
+            logger.info("📅 Windows Task: Every 15 minutes")
             
         elif STRATEGY_CONFIG['timeframe'] == 'M30':
             # Run every 30 minutes
@@ -438,14 +734,6 @@ def setup_windows_task():
             return False
         
         # Create the task
-        create_cmd = [
-            'schtasks', '/Create', '/TN', task_name,
-            '/TR', command,
-            '/SC', 'MINUTE', '/MO', '1' if STRATEGY_CONFIG['timeframe'] == 'M15' else '60',
-            '/F'  # Force create (overwrite if exists)
-        ]
-        
-        # For H1, H4 - use hourly schedule
         if STRATEGY_CONFIG['timeframe'] in ['H1', 'H4']:
             mo = '1' if STRATEGY_CONFIG['timeframe'] == 'H1' else '4'
             create_cmd = [
@@ -468,6 +756,13 @@ def setup_windows_task():
                 'schtasks', '/Create', '/TN', task_name,
                 '/TR', command,
                 '/SC', 'MINUTE', '/MO', '15',
+                '/F'
+            ]
+        else:
+            create_cmd = [
+                'schtasks', '/Create', '/TN', task_name,
+                '/TR', command,
+                '/SC', 'MINUTE', '/MO', '60',
                 '/F'
             ]
         
@@ -505,8 +800,6 @@ def setup_windows_task():
 def setup_unix_cron():
     """Set up Unix/Linux cron job"""
     try:
-        from crontab import CronTab
-        
         cron = CronTab(user=True)  # Use current user instead of root
         
         # Remove existing jobs for this strategy
