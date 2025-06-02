@@ -349,7 +349,7 @@ class RangeStraddleStrategy:
             current_time = candles_df.iloc[latest_idx]['time']
             
             logger.info(f"🧪 Condition checks:")
-            logger.info(f"   Narrow condition: {is_narrow} (avg height {current_avg_candle_height:.5f} <= threshold {percentile_threshold:.5f})")
+            logger.info(f"   Narrow condition: {is_narrow} (avg height {current_avg_candle_height:.5f} <= threshold {percentile_threshold:.5f}) or (range width {range_width:.5f} <= threshold*4 {percentile_threshold*4:.5f}) or (range width {range_width:.5f} <= larger threshold*2 {percentile_larger_threshold*2:.5f})")
             logger.info(f"   Channel condition: {is_channel}")
             logger.info(f"   Min range condition: {min_range_met} (range {range_pips:.1f} pips >= min {self.config['min_range_pips']} pips)")
             
@@ -385,6 +385,8 @@ class RangeStraddleStrategy:
                 failed_conditions = []
                 if not is_narrow:
                     failed_conditions.append(f"Range is not Narrow (avg height {current_avg_candle_height:.5f} > threshold {percentile_threshold:.5f})")
+                    failed_conditions.append(f"Range is not Narrow (range width {range_width:.5f} > threshold*4 {percentile_threshold*4:.5f})")
+                    failed_conditions.append(f"Range is not Narrow (range width {range_width:.5f} > larger threshold*2 {percentile_larger_threshold*2:.5f})")
                 if not is_channel:
                     failed_conditions.append("Range is not a Channel (range not detected as channel)")
                 if not min_range_met:
