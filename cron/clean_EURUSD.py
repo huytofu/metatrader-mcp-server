@@ -353,7 +353,8 @@ class EURUSDCleanupTask:
 def setup_windows_task():
     """Set up Windows Task Scheduler task"""
     try:
-        import subprocess
+        # Import the enhanced task setup function
+        from utils import setup_windows_task_with_logon_options
         
         # Get the absolute path to this script
         script_path = os.path.abspath(__file__)
@@ -361,38 +362,20 @@ def setup_windows_task():
         # Task name
         task_name = f"{TASK_NAME}_1H"
         
-        # Delete existing task if it exists
-        try:
-            subprocess.run(['schtasks', '/Delete', '/TN', task_name, '/F'], 
-                         capture_output=True, check=False)
-        except:
-            pass
+        # Create a logger for the setup
+        logger = setup_logging()
         
-        # Create command - run every 1 hour
-        python_exe = sys.executable
-        
-        # Create the task to run every 1 hour
-        cmd = [
-            'schtasks', '/Create',
-            '/TN', task_name,
-            '/TR', f'"{python_exe}" "{script_path}" --run',
-            '/SC', 'HOURLY',
-            '/MO', '1',  # Every 1 hour
-            '/ST', '00:00',  # Start at midnight
-            '/F'  # Force create (overwrite if exists)
-        ]
-        
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        
-        if result.returncode == 0:
-            print(f"✅ Windows task '{task_name}' created successfully!")
-            print(f"📅 Schedule: Every 1 hour starting at 00:00")
-            print(f"📁 Script: {script_path}")
-        else:
-            print(f"❌ Failed to create Windows task: {result.stderr}")
+        # Use the enhanced setup function with H1 timeframe (hourly)
+        return setup_windows_task_with_logon_options(
+            script_path=script_path,
+            task_name=task_name,
+            timeframe='H1',  # Hourly cleanup
+            logger=logger
+        )
             
     except Exception as e:
         print(f"❌ Error setting up Windows task: {e}")
+        return False
 
 def setup_unix_cron():
     """Set up Unix cron job"""

@@ -12,7 +12,7 @@ import logging
 from datetime import datetime, timedelta
 from crontab import CronTab
 from logging.handlers import RotatingFileHandler
-from utils import check_no_pending_orders, calculate_position_size
+from utils import check_no_pending_orders, calculate_position_size, setup_windows_task_with_logon_options
 import traceback
 import json
 
@@ -679,108 +679,20 @@ def setup_cron_job():
 
 def setup_windows_task():
     """Set up Windows Task Scheduler task"""
-    try:
-        import subprocess
-        
-        # Get the absolute path to this script
-        script_path = os.path.abspath(__file__)
-        project_path = os.path.dirname(os.path.dirname(script_path))
-        
-        # Task name
-        task_name = f"RangeStraddleStrategy_{STRATEGY_CONFIG['symbol']}_{STRATEGY_CONFIG['timeframe']}"
-        
-        # Delete existing task if it exists
-        try:
-            subprocess.run(['schtasks', '/Delete', '/TN', task_name, '/F'], 
-                         capture_output=True, check=False)
-        except:
-            pass
-        
-        # Create command based on timeframe
-        python_exe = sys.executable
-        command = f'"{python_exe}" "{script_path}" --run-once'
-        
-        # Set schedule based on timeframe
-        if STRATEGY_CONFIG['timeframe'] == 'H1':
-            # Run every hour at minute 5
-            schedule = '/SC HOURLY /MO 1 /ST 00:05'
-            logger.info("📅 Windows Task: Every hour at minute 5")
-            
-        elif STRATEGY_CONFIG['timeframe'] == 'M15':
-            # Run every 15 minutes (Windows Task Scheduler limitation - will run every minute and check internally)
-            schedule = '/SC MINUTE /MO 1'
-            logger.info("📅 Windows Task: Every minute (will check internally for 15-min intervals)")
-            
-        elif STRATEGY_CONFIG['timeframe'] == 'M30':
-            # Run every 30 minutes
-            schedule = '/SC MINUTE /MO 30'
-            logger.info("📅 Windows Task: Every 30 minutes")
-            
-        elif STRATEGY_CONFIG['timeframe'] == 'H4':
-            # Run every 4 hours
-            schedule = '/SC HOURLY /MO 4 /ST 00:05'
-            logger.info("📅 Windows Task: Every 4 hours at minute 5")
-            
-        else:
-            logger.error(f"❌ Unsupported timeframe: {STRATEGY_CONFIG['timeframe']}")
-            return False
-        
-        # Create the task
-        create_cmd = [
-            'schtasks', '/Create', '/TN', task_name,
-            '/TR', command,
-            '/SC', 'MINUTE', '/MO', '1' if STRATEGY_CONFIG['timeframe'] == 'M15' else '60',
-            '/F'  # Force create (overwrite if exists)
-        ]
-        
-        # For H1, H4 - use hourly schedule
-        if STRATEGY_CONFIG['timeframe'] in ['H1', 'H4']:
-            mo = '1' if STRATEGY_CONFIG['timeframe'] == 'H1' else '4'
-            create_cmd = [
-                'schtasks', '/Create', '/TN', task_name,
-                '/TR', command,
-                '/SC', 'HOURLY', '/MO', mo,
-                '/ST', '00:05',  # Start at 5 minutes past the hour
-                '/F'
-            ]
-        elif STRATEGY_CONFIG['timeframe'] == 'M30':
-            create_cmd = [
-                'schtasks', '/Create', '/TN', task_name,
-                '/TR', command,
-                '/SC', 'MINUTE', '/MO', '30',
-                '/F'
-            ]
-        
-        result = subprocess.run(create_cmd, capture_output=True, text=True, check=True)
-        
-        logger.info(f"✅ Windows Task Scheduler job created successfully for {STRATEGY_CONFIG['timeframe']} strategy")
-        logger.info(f"📋 Task Name: {task_name}")
-        logger.info(f"🎯 Command: {command}")
-        
-        # Show the created task
-        list_result = subprocess.run(['schtasks', '/Query', '/TN', task_name, '/FO', 'LIST'], 
-                                   capture_output=True, text=True)
-        if list_result.returncode == 0:
-            logger.info("📋 Task Details:")
-            for line in list_result.stdout.split('\n'):
-                if line.strip():
-                    logger.info(f"   {line.strip()}")
-        
-        logger.info(f"\n💡 To manually manage this task:")
-        logger.info(f"   View: schtasks /Query /TN {task_name}")
-        logger.info(f"   Run:  schtasks /Run /TN {task_name}")
-        logger.info(f"   Stop: schtasks /End /TN {task_name}")
-        logger.info(f"   Delete: schtasks /Delete /TN {task_name} /F")
-        
-        return True
-        
-    except subprocess.CalledProcessError as e:
-        logger.error(f"❌ Failed to create Windows task: {e}")
-        logger.error(f"   Error output: {e.stderr}")
-        return False
-    except Exception as e:
-        logger.error(f"❌ Error setting up Windows task: {e}")
-        return False
+    from utils import setup_windows_task_with_logon_options
+    
+    # Get the absolute path to this script
+    script_path = os.path.abspath(__file__)
+    
+    # Task name
+    task_name = f"RangeStraddleStrategy_{STRATEGY_CONFIG['symbol']}_{STRATEGY_CONFIG['timeframe']}_One"
+    
+    return setup_windows_task_with_logon_options(
+        script_path=script_path,
+        task_name=task_name, 
+        timeframe=STRATEGY_CONFIG['timeframe'],
+        logger=logger
+    )
 
 def setup_unix_cron():
     """Set up Unix/Linux cron job"""
