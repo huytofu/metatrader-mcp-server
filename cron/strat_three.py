@@ -12,7 +12,7 @@ import logging
 from datetime import datetime, timedelta
 from crontab import CronTab
 from logging.handlers import RotatingFileHandler
-from utils import check_no_pending_orders
+from utils import check_no_pending_orders, calculate_position_size
 import traceback
 import json
 
@@ -460,30 +460,6 @@ class RangeStraddleStrategy:
             logger.debug(f"🔍 Channel error details: {traceback.format_exc()}")
             return False
     
-    def calculate_position_size(self, stop_loss_distance):
-        """Calculate position size based on risk management with logging"""
-        try:
-            logger.info(f"💰 Calculating position size...")
-            logger.info(f"   Stop loss distance: {stop_loss_distance:.5f}")
-            logger.info(f"   Risk per trade: {self.config['risk_per_trade'] * 100}%")
-            
-            # This is a simplified calculation
-            # In practice, you'd get account balance and implement proper risk management
-            
-            # For now, using a fixed lot size
-            # TODO: Implement proper position sizing based on account balance and risk
-            lot_size = 0.1
-            
-            logger.info(f"💰 Calculated position size: {lot_size} lots (fixed)")
-            logger.warning(f"⚠️ Using fixed lot size - implement proper risk management!")
-            
-            return lot_size
-            
-        except Exception as e:
-            logger.error(f"❌ Error calculating position size: {str(e)}")
-            logger.error(f"🔍 Error details: {traceback.format_exc()}")
-            return 0.01  # Minimum lot size as fallback
-    
     def place_oco_trades(self, opportunity_data):
         """Place OCO (One Cancels Other) trades with comprehensive logging"""
         try:
@@ -531,7 +507,7 @@ class RangeStraddleStrategy:
             sell_sl = sell_stop_price + stop_loss_distance
             
             # Calculate position size
-            lot_size = self.calculate_position_size(stop_loss_distance)
+            lot_size = calculate_position_size(self.ctx, self.config['symbol'], stop_loss_distance, self.config['risk_per_trade'])
             
             # Convert to pips for logging
             pip_multiplier = 100 if 'JPY' in self.config['symbol'] else 10000
