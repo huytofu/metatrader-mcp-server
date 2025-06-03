@@ -1,0 +1,6 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+MetaTrader MCP Tool Names: All MetaTrader MCP tool names should be referenced WITHOUT any prefix. The correct names are: get_account_info, place_pending_order, cancel_pending_order, get_positions_by_symbol, etc. Never add "mcp_metatrader_" or any other prefix when referencing these tools.
