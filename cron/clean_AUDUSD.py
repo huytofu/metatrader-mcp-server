@@ -165,8 +165,8 @@ class AUDUSDCleanupTask:
                 
                 # Log position details
                 for idx, pos in positions.iterrows():
-                    pos_type = "BUY" if pos['type'] == 0 else "SELL"
-                    self.logger.info(f"{emoji_or_text('💼', '[POS]')} Position {pos['ticket']}: {pos_type} {pos['volume']} lots at {pos['price_open']}")
+                    pos_type = "BUY" if str(pos['type']).strip() in [0, "BUY"] else "SELL"
+                    self.logger.info(f"{emoji_or_text('💼', '[POS]')} Position {pos['id']}: {pos_type} {pos['volume']} lots at {pos['open']}")
                 
                 return positions
             else:
@@ -195,7 +195,7 @@ class AUDUSDCleanupTask:
                         4: "BUY_STOP", 5: "SELL_STOP"
                     }
                     order_type = order_type_map.get(order['type'], f"TYPE_{order['type']}")
-                    self.logger.info(f"{emoji_or_text('📝', '[ORD]')} Order {order['ticket']}: {order_type} {order['volume']} lots at {order['price_open']}")
+                    self.logger.info(f"{emoji_or_text('📝', '[ORD]')} Order {order['id']}: {order_type} {order['volume']} lots at {order['open']}")
                 
                 return pending_orders
             else:
@@ -214,19 +214,20 @@ class AUDUSDCleanupTask:
         try:
             for idx, order in pending_orders.iterrows():
                 order_type = order['type']
-                order_ticket = order['ticket']
+                order_ticket = order['id']
+                print(position_type, order_type, order_ticket)
                 
                 # Determine if this order conflicts with the position
                 should_cancel = False
                 
                 if position_type == "BUY":
                     # If we have a BUY position, cancel SELL orders (SELL_LIMIT=3, SELL_STOP=5)
-                    if order_type in [3, 5]:
+                    if order_type in [3, 5, "SELL_LIMIT", "SELL_STOP"]:
                         should_cancel = True
                         order_desc = "SELL_LIMIT" if order_type == 3 else "SELL_STOP"
                 elif position_type == "SELL":
                     # If we have a SELL position, cancel BUY orders (BUY_LIMIT=2, BUY_STOP=4)
-                    if order_type in [2, 4]:
+                    if order_type in [2, 4, "BUY_LIMIT", "BUY_STOP"]:
                         should_cancel = True
                         order_desc = "BUY_LIMIT" if order_type == 2 else "BUY_STOP"
                 
@@ -293,7 +294,7 @@ class AUDUSDCleanupTask:
             
             # Determine position type (assume all positions are same direction)
             # In MT5: type 0 = BUY, type 1 = SELL
-            first_position_type = "BUY" if positions.iloc[0]['type'] == 0 else "SELL"
+            first_position_type = "BUY" if str(positions.iloc[0]['type']).strip() in [0, "BUY"] else "SELL"
             self.logger.info(f"{emoji_or_text('📊', '[POS]')} Current {SYMBOL} position type: {first_position_type}")
             
             # Get pending orders
