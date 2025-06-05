@@ -329,8 +329,10 @@ def check_if_range_is_channel_local(candles_df):
         top_diff = abs(top_peaks_diff.iloc[1]) if not pd.isna(top_peaks_diff.iloc[1]) else 0
         bottom_diff = abs(bottom_peaks_diff.iloc[1]) if not pd.isna(bottom_peaks_diff.iloc[1]) else 0
         
-        top_threshold = channel_range * 0.2
-        bottom_threshold = channel_range * 0.2
+        # top_threshold = channel_range * 0.2
+        # bottom_threshold = channel_range * 0.2
+        top_threshold = channel_range * 0.15
+        bottom_threshold = channel_range * 0.15
         
         is_channel = (top_diff <= top_threshold and bottom_diff <= bottom_threshold)
         
