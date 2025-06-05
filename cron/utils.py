@@ -1,3 +1,4 @@
+import pandas as pd
 from metatrader_mcp.server import get_pending_orders_by_symbol, get_account_info, get_symbol_price
 from metatrader_mcp.server import Context
 import logging
@@ -285,4 +286,63 @@ def calculate_position_size(ctx, symbol, stop_loss_distance, risk_per_trade):
         logger.warning(f"⚠️ Using minimum lot size as fallback")
         return 0.01  # Minimum lot size as fallback
 
+def check_if_range_is_channel_local(candles_df):
+    """Local channel detection function with detailed logging"""
+    if candles_df.empty or len(candles_df) < 2:
+        logger.warning(f"⚠️ Channel check: insufficient data ({len(candles_df)} candles)")
+        return False
+    
+    try:
+        channel_range = candles_df["high"].max() - candles_df["low"].min()
+        
+        two_top_peaks = candles_df.nlargest(2, "high")
+        two_bottom_peaks = candles_df.nsmallest(2, "low")
+        
+        logger.debug(f"🔍 Channel analysis:")
+        logger.debug(f"   Channel range: {channel_range:.5f}")
+        logger.debug(f"   Top peaks: {len(two_top_peaks)}")
+        logger.debug(f"   Bottom peaks: {len(two_bottom_peaks)}")
+        
+        if len(two_top_peaks) < 2 or len(two_bottom_peaks) < 2:
+            logger.debug(f"⚠️ Channel check: insufficient peaks")
+            return False
+        
+        # Check if top peaks are from adjacent candles
+        top_peak_indices = sorted(two_top_peaks.index.tolist())
+        if len(top_peak_indices) >= 2:
+            for i in range(len(top_peak_indices) - 1):
+                if abs(top_peak_indices[i+1] - top_peak_indices[i]) == 1:
+                    logger.debug(f"⚠️ Channel check: top peaks from adjacent candles (indices {top_peak_indices[i]} and {top_peak_indices[i+1]})")
+                    return False
+        
+        # Check if bottom peaks are from adjacent candles
+        bottom_peak_indices = sorted(two_bottom_peaks.index.tolist())
+        if len(bottom_peak_indices) >= 2:
+            for i in range(len(bottom_peak_indices) - 1):
+                if abs(bottom_peak_indices[i+1] - bottom_peak_indices[i]) == 1:
+                    logger.debug(f"⚠️ Channel check: bottom peaks from adjacent candles (indices {bottom_peak_indices[i]} and {bottom_peak_indices[i+1]})")
+                    return False
+        
+        top_peaks_diff = two_top_peaks["high"].diff()
+        bottom_peaks_diff = two_bottom_peaks["low"].diff()
+        
+        top_diff = abs(top_peaks_diff.iloc[1]) if not pd.isna(top_peaks_diff.iloc[1]) else 0
+        bottom_diff = abs(bottom_peaks_diff.iloc[1]) if not pd.isna(bottom_peaks_diff.iloc[1]) else 0
+        
+        top_threshold = channel_range * 0.2
+        bottom_threshold = channel_range * 0.2
+        
+        is_channel = (top_diff <= top_threshold and bottom_diff <= bottom_threshold)
+        
+        logger.debug(f"   Top diff: {top_diff:.5f} (threshold: {top_threshold:.5f})")
+        logger.debug(f"   Bottom diff: {bottom_diff:.5f} (threshold: {bottom_threshold:.5f})")
+        logger.debug(f"   Top peak indices: {top_peak_indices}")
+        logger.debug(f"   Bottom peak indices: {bottom_peak_indices}")
+        logger.debug(f"   Is channel: {is_channel}")
+        
+        return is_channel
 
+    except Exception as e:
+        logger.error(f"Error in channel detection: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return False

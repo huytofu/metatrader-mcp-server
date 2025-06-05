@@ -12,7 +12,7 @@ import logging
 from datetime import datetime, timedelta
 from crontab import CronTab
 from logging.handlers import RotatingFileHandler
-from utils import check_no_pending_orders, calculate_position_size, setup_windows_task_with_logon_options
+from utils import check_no_pending_orders, calculate_position_size, setup_windows_task_with_logon_options, check_if_range_is_channel_local
 import traceback
 import json
 
@@ -340,7 +340,7 @@ class RangeStraddleStrategy:
                         (range_width <= percentile_threshold*4) or \
                         (range_width <= percentile_larger_threshold*2)
             # if range width is less than or equal to 4 times the percentile threshold, or 2 times the percentile larger threshold, then it is a narrow range
-            is_channel = self.check_if_range_is_channel_local(range_candles)
+            is_channel = check_if_range_is_channel_local(range_candles)
             
             # Convert range to pips (for USDJPY, 1 pip = 0.01)
             pip_multiplier = 100 if 'JPY' in self.config['symbol'] else 10000
@@ -412,53 +412,6 @@ class RangeStraddleStrategy:
             logger.error(f"❌ Error analyzing range opportunity: {str(e)}")
             logger.error(f"🔍 Error details: {traceback.format_exc()}")
             return {'signal': False, 'error': str(e)}
-    
-    def check_if_range_is_channel_local(self, candles_df):
-        """Local channel detection function with detailed logging"""
-        if candles_df.empty or len(candles_df) < 2:
-            logger.warning(f"⚠️ Channel check: insufficient data ({len(candles_df)} candles)")
-            return False
-        
-        try:
-            channel_range = candles_df["high"].max() - candles_df["low"].min()
-            
-            two_top_peaks = candles_df.nlargest(2, "high")
-            two_bottom_peaks = candles_df.nsmallest(2, "low")
-            
-            logger.debug(f"🔍 Channel analysis:")
-            logger.debug(f"   Channel range: {channel_range:.5f}")
-            logger.debug(f"   Top peaks: {len(two_top_peaks)}")
-            logger.debug(f"   Bottom peaks: {len(two_bottom_peaks)}")
-            
-            if len(two_top_peaks) < 2 or len(two_bottom_peaks) < 2:
-                logger.debug(f"⚠️ Channel check: insufficient peaks")
-                return False
-            
-            top_peaks_diff = two_top_peaks["high"].diff()
-            bottom_peaks_diff = two_bottom_peaks["low"].diff()
-            
-            if len(top_peaks_diff) < 2 or len(bottom_peaks_diff) < 2:
-                logger.debug(f"⚠️ Channel check: insufficient peak differences")
-                return False
-                
-            top_diff = abs(top_peaks_diff.iloc[1]) if not pd.isna(top_peaks_diff.iloc[1]) else 0
-            bottom_diff = abs(bottom_peaks_diff.iloc[1]) if not pd.isna(bottom_peaks_diff.iloc[1]) else 0
-            
-            top_threshold = channel_range * 0.2
-            bottom_threshold = channel_range * 0.2
-            
-            is_channel = (top_diff <= top_threshold and bottom_diff <= bottom_threshold)
-            
-            logger.debug(f"   Top diff: {top_diff:.5f} (threshold: {top_threshold:.5f})")
-            logger.debug(f"   Bottom diff: {bottom_diff:.5f} (threshold: {bottom_threshold:.5f})")
-            logger.debug(f"   Is channel: {is_channel}")
-            
-            return is_channel
-            
-        except Exception as e:
-            logger.warning(f"⚠️ Channel detection error: {e}, defaulting to False")
-            logger.debug(f"🔍 Channel error details: {traceback.format_exc()}")
-            return False
     
     def place_oco_trades(self, opportunity_data):
         """Place OCO (One Cancels Other) trades with comprehensive logging"""
@@ -679,7 +632,6 @@ def setup_cron_job():
 
 def setup_windows_task():
     """Set up Windows Task Scheduler task"""
-    from utils import setup_windows_task_with_logon_options
     
     # Get the absolute path to this script
     script_path = os.path.abspath(__file__)
