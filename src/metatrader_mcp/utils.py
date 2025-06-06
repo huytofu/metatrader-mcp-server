@@ -54,7 +54,11 @@ def init(
 	
 def get_client(ctx: Any) -> Optional[client.MT5Client]:
 	try:	
-		return ctx.request_context.lifespan_context.client
+		client = ctx.request_context.lifespan_context.client
+		if client:
+			return client
+		else:
+			return ctx.client
 	except:
 		return ctx.client
 
