@@ -1,5 +1,6 @@
 from typing import Any, Optional, Union
 from metatrader_client import client
+from env import config as env_config
 import os
 import dotenv
 
@@ -40,7 +41,15 @@ def init(
 		except Exception as e:
 			print(f"Error connecting to MetaTrader 5: {e}")
 			return None
-
+	elif env_config:
+		try:
+			mt5_client = client.MT5Client(config=env_config)
+			print(env_config)
+			mt5_client.connect()
+			return mt5_client
+		except Exception as e:
+			print(f"Error connecting to MetaTrader 5: {e}")
+			return None
 	return None
 	
 def get_client(ctx: Any) -> Optional[client.MT5Client]:
