@@ -12,13 +12,13 @@ import logging
 from datetime import datetime, timedelta
 from crontab import CronTab
 from logging.handlers import RotatingFileHandler
-from utils import check_no_pending_orders, calculate_position_size, setup_windows_task_with_logon_options, check_if_range_is_channel_local
 import traceback
 import json
 
 # Add src directory to Python path
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'src'))
 
+from utils import check_no_pending_orders, calculate_position_size, setup_windows_task_with_logon_options, check_if_range_is_channel_local
 from metatrader_mcp.server import *
 from dataclasses import dataclass
 
