@@ -222,7 +222,7 @@ def save_currency_data(df, filename_prefix="cot_currency_index"):
         
     try:
         # Create output directory if it doesn't exist
-        output_dir = "cot_data"
+        output_dir = "cot_data_currency"
         os.makedirs(output_dir, exist_ok=True)
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
