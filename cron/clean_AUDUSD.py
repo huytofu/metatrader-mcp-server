@@ -208,14 +208,54 @@ class AUDUSDCleanupTask:
             return None
     
     def cancel_conflicting_orders(self, position_type, pending_orders):
-        """Cancel orders that conflict with the current position"""
+        """Cancel orders that conflict with the current position or violate straddle pairing"""
         cancelled_count = 0
         
         try:
+            # Check for straddle pairing violations first
+            buy_stop_orders = pending_orders[pending_orders['type'].isin([2, 4, "BUY_LIMIT", "BUY_STOP"])]
+            sell_stop_orders = pending_orders[pending_orders['type'].isin([3, 5, "SELL_LIMIT", "SELL_STOP"])]
+            
+            # Filter for STOP orders only (not LIMIT orders)
+            buy_stop_only = buy_stop_orders[buy_stop_orders['type'].isin([4, "BUY_STOP"])]
+            sell_stop_only = sell_stop_orders[sell_stop_orders['type'].isin([5, "SELL_STOP"])]
+            
+            # Condition 3a: SELL_STOP exists but no BUY_STOP
+            if not buy_stop_only.empty and sell_stop_only.empty:
+                self.logger.info(f"{emoji_or_text('⚠️', '[STRADDLE]')} Found BUY_STOP order(s) without corresponding SELL_STOP - cancelling BUY_STOP")
+                for idx, order in buy_stop_only.iterrows():
+                    order_ticket = order['id']
+                    self.logger.info(f"{emoji_or_text('🗑️', '[DEL]')} Cancelling unpaired BUY_STOP order {order_ticket}")
+                    try:
+                        result = cancel_pending_order(ctx=self.ctx, id=order_ticket)
+                        if result:
+                            self.logger.info(f"{emoji_or_text('✅', '[OK]')} Successfully cancelled unpaired BUY_STOP order {order_ticket}")
+                            cancelled_count += 1
+                        else:
+                            self.logger.warning(f"{emoji_or_text('⚠️', '[WARN]')} Failed to cancel unpaired BUY_STOP order {order_ticket}")
+                    except Exception as e:
+                        self.logger.error(f"{emoji_or_text('💥', '[ERR]')} Error cancelling unpaired BUY_STOP order {order_ticket}: {str(e)}")
+            
+            # Condition 3b: BUY_STOP exists but no SELL_STOP
+            elif buy_stop_only.empty and not sell_stop_only.empty:
+                self.logger.info(f"{emoji_or_text('⚠️', '[STRADDLE]')} Found SELL_STOP order(s) without corresponding BUY_STOP - cancelling SELL_STOP")
+                for idx, order in sell_stop_only.iterrows():
+                    order_ticket = order['id']
+                    self.logger.info(f"{emoji_or_text('🗑️', '[DEL]')} Cancelling unpaired SELL_STOP order {order_ticket}")
+                    try:
+                        result = cancel_pending_order(ctx=self.ctx, id=order_ticket)
+                        if result:
+                            self.logger.info(f"{emoji_or_text('✅', '[OK]')} Successfully cancelled unpaired SELL_STOP order {order_ticket}")
+                            cancelled_count += 1
+                        else:
+                            self.logger.warning(f"{emoji_or_text('⚠️', '[WARN]')} Failed to cancel unpaired SELL_STOP order {order_ticket}")
+                    except Exception as e:
+                        self.logger.error(f"{emoji_or_text('💥', '[ERR]')} Error cancelling unpaired SELL_STOP order {order_ticket}: {str(e)}")
+            
+            # Now check for position conflicts (original logic)
             for idx, order in pending_orders.iterrows():
                 order_type = order['type']
                 order_ticket = order['id']
-                print(position_type, order_type, order_ticket)
                 
                 # Determine if this order conflicts with the position
                 should_cancel = False
