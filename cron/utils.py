@@ -255,7 +255,7 @@ def calculate_position_size(ctx, symbol, stop_loss_distance, risk_per_trade):
         
         # Apply position size constraints
         min_lot_size = 0.01
-        max_lot_size = 10.0  # Conservative maximum
+        max_lot_size = 20.0  # Increased maximum to allow proper AUDUSD & CADUSD position sizing
         
         # Round to valid lot size increments (0.01)
         lot_size = round(calculated_lot_size, 2)
