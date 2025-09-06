@@ -206,7 +206,7 @@ class GBPUSDCleanupTask:
             self.logger.error(f"{emoji_or_text('📋', '[TRC]')} {traceback.format_exc()}")
             return None
     
-    def cancel_conflicting_orders(self, position_type, pending_orders):
+    def cancel_conflicting_orders(self, position_type, pending_orders, positions_empty):
         """Cancel orders that conflict with the current position or violate straddle pairing"""
         cancelled_count = 0
         
@@ -252,36 +252,37 @@ class GBPUSDCleanupTask:
                         self.logger.error(f"{emoji_or_text('💥', '[ERR]')} Error cancelling unpaired SELL_STOP order {order_ticket}: {str(e)}")
             
             # Now check for position conflicts (original logic)
-            for idx, order in pending_orders.iterrows():
-                order_type = order['type']
-                order_ticket = order['id']
-                
-                # Determine if this order conflicts with the position
-                should_cancel = False
-                
-                if position_type == "BUY":
-                    # If we have a BUY position, cancel SELL orders (SELL_LIMIT=3, SELL_STOP=5)
-                    if order_type in [3, 5, "SELL_LIMIT", "SELL_STOP"]:
-                        should_cancel = True
-                        order_desc = "SELL_LIMIT" if order_type == 3 else "SELL_STOP"
-                elif position_type == "SELL":
-                    # If we have a SELL position, cancel BUY orders (BUY_LIMIT=2, BUY_STOP=4)
-                    if order_type in [2, 4, "BUY_LIMIT", "BUY_STOP"]:
-                        should_cancel = True
-                        order_desc = "BUY_LIMIT" if order_type == 2 else "BUY_STOP"
-                
-                if should_cancel:
-                    self.logger.info(f"{emoji_or_text('🗑️', '[DEL]')} Cancelling conflicting {order_desc} order {order_ticket}")
+            if not positions_empty:
+                for idx, order in pending_orders.iterrows():
+                    order_type = order['type']
+                    order_ticket = order['id']
                     
-                    try:
-                        result = cancel_pending_order(ctx=self.ctx, id=order_ticket)
-                        if result:
-                            self.logger.info(f"{emoji_or_text('✅', '[OK]')} Successfully cancelled order {order_ticket}")
-                            cancelled_count += 1
-                        else:
-                            self.logger.warning(f"{emoji_or_text('⚠️', '[WARN]')} Failed to cancel order {order_ticket}")
-                    except Exception as e:
-                        self.logger.error(f"{emoji_or_text('💥', '[ERR]')} Error cancelling order {order_ticket}: {str(e)}")
+                    # Determine if this order conflicts with the position
+                    should_cancel = False
+                    
+                    if position_type == "BUY":
+                        # If we have a BUY position, cancel SELL orders (SELL_LIMIT=3, SELL_STOP=5)
+                        if order_type in [3, 5, "SELL_LIMIT", "SELL_STOP"]:
+                            should_cancel = True
+                            order_desc = "SELL_LIMIT" if order_type == 3 else "SELL_STOP"
+                    elif position_type == "SELL":
+                        # If we have a SELL position, cancel BUY orders (BUY_LIMIT=2, BUY_STOP=4)
+                        if order_type in [2, 4, "BUY_LIMIT", "BUY_STOP"]:
+                            should_cancel = True
+                            order_desc = "BUY_LIMIT" if order_type == 2 else "BUY_STOP"
+                    
+                    if should_cancel:
+                        self.logger.info(f"{emoji_or_text('🗑️', '[DEL]')} Cancelling conflicting {order_desc} order {order_ticket}")
+                        
+                        try:
+                            result = cancel_pending_order(ctx=self.ctx, id=order_ticket)
+                            if result:
+                                self.logger.info(f"{emoji_or_text('✅', '[OK]')} Successfully cancelled order {order_ticket}")
+                                cancelled_count += 1
+                            else:
+                                self.logger.warning(f"{emoji_or_text('⚠️', '[WARN]')} Failed to cancel order {order_ticket}")
+                        except Exception as e:
+                            self.logger.error(f"{emoji_or_text('💥', '[ERR]')} Error cancelling order {order_ticket}: {str(e)}")
                         
         except Exception as e:
             self.logger.error(f"{emoji_or_text('💥', '[ERR]')} Error in cancel_conflicting_orders: {str(e)}")
@@ -326,15 +327,12 @@ class GBPUSDCleanupTask:
             # If no positions, nothing to do
             if positions.empty:
                 self.logger.info(f"{emoji_or_text('✅', '[OK]')} No open {SYMBOL} positions - cleanup not needed")
-                return CleanupResult(
-                    success=True,
-                    open_positions=0
-                )
-            
-            # Determine position type (assume all positions are same direction)
-            # In MT5: type 0 = BUY, type 1 = SELL
-            first_position_type = "BUY" if str(positions.iloc[0]['type']).strip() in [0, "BUY"] else "SELL"
-            self.logger.info(f"{emoji_or_text('📊', '[POS]')} Current {SYMBOL} position type: {first_position_type}")
+                first_position_type = None
+            else:
+                # Determine position type (assume all positions are same direction)
+                # In MT5: type 0 = BUY, type 1 = SELL
+                first_position_type = "BUY" if str(positions.iloc[0]['type']).strip() in [0, "BUY"] else "SELL"
+                self.logger.info(f"{emoji_or_text('📊', '[POS]')} Current {SYMBOL} position type: {first_position_type}")
             
             # Get pending orders
             pending_orders = self.get_gbpusd_pending_orders()
@@ -358,7 +356,7 @@ class GBPUSDCleanupTask:
                 )
             
             # Cancel conflicting orders
-            cancelled_count = self.cancel_conflicting_orders(first_position_type, pending_orders)
+            cancelled_count = self.cancel_conflicting_orders(first_position_type, pending_orders, positions.empty)
             
             result = CleanupResult(
                 success=True,
