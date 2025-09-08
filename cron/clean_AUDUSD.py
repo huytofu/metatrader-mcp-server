@@ -230,6 +230,7 @@ class AUDUSDCleanupTask:
                         result = cancel_pending_order(ctx=self.ctx, id=order_ticket)
                         if result:
                             self.logger.info(f"{emoji_or_text('✅', '[OK]')} Successfully cancelled unpaired BUY_STOP order {order_ticket}")
+                            self.logger.info(result)
                             cancelled_count += 1
                         else:
                             self.logger.warning(f"{emoji_or_text('⚠️', '[WARN]')} Failed to cancel unpaired BUY_STOP order {order_ticket}")
@@ -246,6 +247,7 @@ class AUDUSDCleanupTask:
                         result = cancel_pending_order(ctx=self.ctx, id=order_ticket)
                         if result:
                             self.logger.info(f"{emoji_or_text('✅', '[OK]')} Successfully cancelled unpaired SELL_STOP order {order_ticket}")
+                            self.logger.info(result)
                             cancelled_count += 1
                         else:
                             self.logger.warning(f"{emoji_or_text('⚠️', '[WARN]')} Failed to cancel unpaired SELL_STOP order {order_ticket}")
