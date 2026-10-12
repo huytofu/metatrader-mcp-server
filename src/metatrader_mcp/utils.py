@@ -1,10 +1,23 @@
 from typing import Any, Optional, Union
 from metatrader_client import client
-from env import config as env_config
 import os
 import dotenv
 
 dotenv.load_dotenv()
+
+def _config_from_env() -> Optional[dict]:
+	login = os.getenv("login") or os.getenv("LOGIN")
+	password = os.getenv("password") or os.getenv("PASSWORD")
+	server = os.getenv("server") or os.getenv("SERVER")
+	path = os.getenv("mt5_path") or os.getenv("MT5_PATH")
+	if not (login and password and server and path):
+		return None
+	return {
+		"login": int(login),
+		"password": password,
+		"server": server,
+		"path": path,
+	}
 
 def init(
 	login: Optional[Union[str, int]],
@@ -41,7 +54,7 @@ def init(
 		except Exception as e:
 			print(f"Error connecting to MetaTrader 5: {e}")
 			return None
-	elif env_config:
+	elif (env_config := _config_from_env()):
 		try:
 			mt5_client = client.MT5Client(config=env_config)
 			print(env_config)
